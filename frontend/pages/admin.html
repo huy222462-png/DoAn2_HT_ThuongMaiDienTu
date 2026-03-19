@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quản trị hệ thống - LumiCart</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container">
+      <a class="navbar-brand" href="index.html">
+        <span class="brand-mark me-2">LC</span>LumiCart
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link" href="index.html"><i class="fas fa-home me-1"></i>Trang chu</a>
+          </li>
+          <li class="nav-item dropdown" id="userNavItem" style="display: none;">
+            <a class="nav-link dropdown-toggle active" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+              <i class="fas fa-user me-1"></i><span id="userNameDisplay"></span>
+            </a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="profile.html"><i class="fas fa-user-circle me-2"></i>Thong tin ca nhan</a></li>
+              <li><a class="dropdown-item" href="orders.html"><i class="fas fa-receipt me-2"></i>Don hang cua toi</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="#" id="logoutBtn"><i class="fas fa-sign-out-alt me-2"></i>Dang xuat</a></li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container my-4 admin-shell">
+    <section class="admin-hero reveal-on-scroll mb-4">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+          <h2 class="mb-1"><i class="fas fa-shield-alt me-2"></i>Admin Dashboard</h2>
+          <p class="mb-0 text-muted">Theo dõi doanh thu, duyệt đơn hàng và quản lý toàn bộ vận hành tại một nơi.</p>
+        </div>
+        <div class="d-flex gap-2">
+          <span class="admin-hero-chip"><i class="fas fa-envelope-circle-check me-1"></i>Email tự động</span>
+          <span class="admin-hero-chip"><i class="fas fa-robot me-1"></i>Chatbot hỗ trợ bán hàng</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="d-flex flex-wrap align-items-center justify-content-between mb-4 gap-2">
+      <h2 class="mb-0 d-none d-md-block"><i class="fas fa-chart-pie me-2"></i>Tổng quan nhanh</h2>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-secondary" id="exportLowStockBtn">
+          <i class="fas fa-file-csv me-2"></i>Xuat ton kho thap
+        </button>
+        <button class="btn btn-outline-primary" id="refreshAllBtn">
+          <i class="fas fa-sync-alt me-2"></i>Lam moi du lieu
+        </button>
+      </div>
+    </div>
+
+    <div class="row g-3 mb-4" id="overviewCards">
+      <div class="col-md-3">
+        <div class="card admin-kpi-card h-100 reveal-on-scroll">
+          <div class="card-body">
+            <small class="text-muted">Doanh thu</small>
+            <h4 class="mt-2 mb-0" id="kpiRevenue">0 VND</h4>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card admin-kpi-card h-100 reveal-on-scroll">
+          <div class="card-body">
+            <small class="text-muted">Don hang</small>
+            <h4 class="mt-2 mb-0" id="kpiOrders">0</h4>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card admin-kpi-card h-100 reveal-on-scroll">
+          <div class="card-body">
+            <small class="text-muted">San pham</small>
+            <h4 class="mt-2 mb-0" id="kpiProducts">0</h4>
+          </div>
+        </div>
+      </div>
+      <div class="col-md-3">
+        <div class="card admin-kpi-card h-100 reveal-on-scroll">
+          <div class="card-body">
+            <small class="text-muted">Nguoi dung</small>
+            <h4 class="mt-2 mb-0" id="kpiUsers">0</h4>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <ul class="nav nav-pills mb-3 admin-tabs" id="adminTabs" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#dashboardTab" type="button">
+          <i class="fas fa-chart-line me-1"></i>Tong quan
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="pill" data-bs-target="#ordersTab" type="button">
+          <i class="fas fa-clipboard-check me-1"></i>Xac nhan don hang
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="pill" data-bs-target="#productsTab" type="button">
+          <i class="fas fa-boxes me-1"></i>Quan ly san pham
+        </button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" data-bs-toggle="pill" data-bs-target="#usersTab" type="button">
+          <i class="fas fa-users-cog me-1"></i>Quan ly nguoi dung
+        </button>
+      </li>
+    </ul>
+    <div class="admin-shortcuts mb-3">
+      <small class="text-muted">
+        <i class="fas fa-keyboard me-1"></i>Phim tat: nhan <strong>/</strong> de focus tim kiem san pham, tab dang mo se duoc luu tu dong.
+      </small>
+    </div>
+
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="dashboardTab">
+        <div class="row g-3">
+          <div class="col-lg-7">
+            <div class="card admin-surface reveal-on-scroll">
+              <div class="card-header d-flex justify-content-between align-items-center">
+                <strong id="revenueCardTitle"><i class="fas fa-calendar-alt me-2"></i>Doanh thu theo ngay</strong>
+                <select class="form-select form-select-sm" id="revenueViewFilter" style="width: 180px;">
+                  <option value="day">Theo ngay</option>
+                  <option value="month">Theo thang</option>
+                  <option value="quarter">Theo quy</option>
+                </select>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  <canvas id="revenueBarChart" height="140"></canvas>
+                </div>
+                <div class="table-responsive">
+                  <table class="table table-sm" id="revenueTable">
+                    <thead>
+                      <tr>
+                        <th id="revenuePeriodHeader">Ky</th>
+                        <th>So don</th>
+                        <th class="text-end">Doanh thu</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-5">
+            <div class="card mb-3 admin-surface reveal-on-scroll">
+              <div class="card-header"><strong><i class="fas fa-fire me-2"></i>Top san pham ban chay</strong></div>
+              <div class="card-body" id="topProductsList"></div>
+            </div>
+            <div class="card admin-surface reveal-on-scroll">
+              <div class="card-header"><strong><i class="fas fa-exclamation-triangle me-2"></i>Canh bao ton kho thap</strong></div>
+              <div class="card-body" id="lowStockList"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="ordersTab">
+        <div class="card admin-surface reveal-on-scroll">
+          <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
+            <strong><i class="fas fa-receipt me-2"></i>Don hang can xu ly</strong>
+            <div class="d-flex gap-2">
+              <select class="form-select form-select-sm" id="orderStatusFilter" style="width: 220px;">
+                <option value="all">Tat ca trang thai</option>
+                <option value="pending">Cho xac nhan</option>
+                <option value="confirmed">Da xac nhan</option>
+                <option value="shipping">Dang giao</option>
+                <option value="completed">Hoan thanh</option>
+                <option value="return_requested">Yeu cau tra hang</option>
+                <option value="returned_shipping">Da gui tra hang</option>
+                <option value="returned_approved">Da hoan tra</option>
+                <option value="returned_rejected">Tu choi hoan tra</option>
+                <option value="cancelled">Da huy</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="ordersTable">
+                <thead>
+                  <tr>
+                    <th>Ma don</th>
+                    <th>Khach hang</th>
+                    <th>Ngay dat</th>
+                    <th>Tong tien</th>
+                    <th>Trang thai</th>
+                    <th style="width: 280px;">Hanh dong</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="productsTab">
+        <div class="card admin-surface reveal-on-scroll">
+          <div class="card-header d-flex flex-wrap gap-2 justify-content-between align-items-center">
+            <strong><i class="fas fa-box-open me-2"></i>Them / Sua / Xoa san pham</strong>
+            <div class="d-flex gap-2">
+              <input type="text" class="form-control form-control-sm" id="productSearchInput" placeholder="Tim san pham..." style="width: 220px;">
+              <button class="btn btn-primary btn-sm" id="addProductBtn">
+                <i class="fas fa-plus me-1"></i>Them san pham
+              </button>
+            </div>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="productsTable">
+                <thead>
+                  <tr>
+                    <th>San pham</th>
+                    <th>Danh muc</th>
+                    <th class="text-end">Gia</th>
+                    <th class="text-center">Ton kho</th>
+                    <th style="width: 160px;">Thao tac</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tab-pane fade" id="usersTab">
+        <div class="card admin-surface reveal-on-scroll">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <strong><i class="fas fa-user-shield me-2"></i>Quan ly tai khoan</strong>
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle" id="usersTable">
+                <thead>
+                  <tr>
+                    <th>Thong tin</th>
+                    <th>Quyen</th>
+                    <th>Trang thai</th>
+                    <th style="width: 150px;">Hanh dong</th>
+                  </tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="productModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title" id="productModalTitle">Them san pham</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="productForm">
+            <input type="hidden" id="productIdInput">
+            <div class="row g-3">
+              <div class="col-md-8">
+                <label class="form-label">Ten san pham</label>
+                <input type="text" class="form-control" id="productNameInput" required>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Danh muc</label>
+                <select class="form-select" id="productCategoryInput" required></select>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Gia (VND)</label>
+                <input type="number" class="form-control" id="productPriceInput" min="0" required>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Gia sale (VND)</label>
+                <input type="number" class="form-control" id="productSalePriceInput" min="0" placeholder="Bo trong neu khong sale">
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Ton kho</label>
+                <input type="number" class="form-control" id="productStockInput" min="0" required>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">URL hinh anh</label>
+                <input type="text" class="form-control" id="productImageInput" placeholder="https://... hoặc /uploads/images/...">
+              </div>
+              <div class="col-12">
+                <label class="form-label">Mo ta</label>
+                <textarea class="form-control" id="productDescriptionInput" rows="4"></textarea>
+              </div>
+              <div class="col-12">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <label class="form-label mb-0">Bien the san pham (mau/size/...)</label>
+                  <button type="button" class="btn btn-outline-primary btn-sm" id="addVariantRowBtn">
+                    <i class="fas fa-plus me-1"></i>Them bien the
+                  </button>
+                </div>
+                <div class="table-responsive">
+                  <table class="table table-sm align-middle mb-2" id="variantTable">
+                    <thead>
+                      <tr>
+                        <th>Ten bien the</th>
+                        <th style="width: 170px;">Gia (VND)</th>
+                        <th style="width: 140px;">Ton kho</th>
+                        <th>Anh bien the (nhieu URL)</th>
+                        <th style="width: 90px;">Xoa</th>
+                      </tr>
+                    </thead>
+                    <tbody id="variantTableBody"></tbody>
+                  </table>
+                </div>
+                <small class="text-muted" id="variantSummaryText">Neu co bien the, thong tin ben duoi chi de tham khao. Gia/ton kho san pham chinh se giu nguyen theo o ben tren.</small>
+              </div>
+            </div>
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Huy</button>
+          <button type="button" class="btn btn-primary" id="saveProductBtn">
+            <i class="fas fa-save me-1"></i>Luu san pham
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="../js/config.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/admin.js"></script>
+</body>
+</html>

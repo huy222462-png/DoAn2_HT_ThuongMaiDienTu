@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Đơn hàng - LumiCart</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container">
+      <a class="navbar-brand" href="index.html">
+        <span class="brand-mark me-2">LC</span>LumiCart
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link" href="index.html"><i class="fas fa-home me-1"></i>Trang chủ</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="products.html"><i class="fas fa-box me-1"></i>Sản phẩm</a>
+          </li>
+          <li class="nav-item" id="cartNavItem">
+            <a class="nav-link" href="cart.html">
+              <i class="fas fa-shopping-cart me-1"></i>Giỏ hàng 
+              <span class="badge bg-danger" id="cartBadge">0</span>
+            </a>
+          </li>
+          <li class="nav-item dropdown" id="userNavItem" style="display: none;">
+            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+              <i class="fas fa-user me-1"></i><span id="userNameDisplay"></span>
+            </a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="profile.html"><i class="fas fa-user-circle me-2"></i>Thông tin cá nhân</a></li>
+              <li><a class="dropdown-item active" href="orders.html"><i class="fas fa-receipt me-2"></i>Đơn hàng của tôi</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="#" id="logoutBtn"><i class="fas fa-sign-out-alt me-2"></i>Đăng xuất</a></li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Orders Content -->
+  <div class="container my-5">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+      <h2 class="mb-0"><i class="fas fa-receipt me-2"></i>Đơn hàng của tôi</h2>
+      <button class="btn btn-outline-primary btn-sm" id="refreshOrdersBtn">
+        <i class="fas fa-rotate me-1"></i>Làm mới
+      </button>
+    </div>
+
+    <div class="row g-3 mb-4" id="orderSummaryCards">
+      <div class="col-6 col-lg-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <small class="text-muted">Tổng đơn</small>
+            <h5 class="mb-0 mt-2" id="sumAllOrders">0</h5>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <small class="text-muted">Chờ xác nhận</small>
+            <h5 class="mb-0 mt-2" id="sumPendingOrders">0</h5>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <small class="text-muted">Đang giao</small>
+            <h5 class="mb-0 mt-2" id="sumShippingOrders">0</h5>
+          </div>
+        </div>
+      </div>
+      <div class="col-6 col-lg-3">
+        <div class="card h-100">
+          <div class="card-body">
+            <small class="text-muted">Hoàn thành</small>
+            <h5 class="mb-0 mt-2" id="sumCompletedOrders">0</h5>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-2 mb-4">
+      <div class="col-md-7">
+        <div class="input-group">
+          <span class="input-group-text"><i class="fas fa-magnifying-glass"></i></span>
+          <input type="text" class="form-control" id="orderSearchInput" placeholder="Tìm theo mã đơn hoặc địa chỉ giao hàng...">
+        </div>
+      </div>
+      <div class="col-md-5">
+        <select class="form-select" id="orderSortSelect">
+          <option value="date_desc">Mới nhất trước</option>
+          <option value="date_asc">Cũ nhất trước</option>
+          <option value="amount_desc">Tổng tiền cao xuống thấp</option>
+          <option value="amount_asc">Tổng tiền thấp lên cao</option>
+        </select>
+      </div>
+    </div>
+    
+    <!-- Filter Tabs -->
+    <ul class="nav nav-tabs mb-4" id="orderTabs">
+      <li class="nav-item">
+        <a class="nav-link active" data-status="" href="#">Tất cả</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-status="pending" href="#">Chờ xác nhận</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-status="confirmed" href="#">Đã xác nhận</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-status="shipping" href="#">Đang giao</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-status="completed" href="#">Hoàn thành</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-status="return_requested" href="#">Yêu cầu trả hàng</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-status="returned_shipping" href="#">Đã gửi trả hàng</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-status="returned_approved" href="#">Đã hoàn trả</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-status="returned_rejected" href="#">Từ chối hoàn trả</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link" data-status="cancelled" href="#">Đã hủy</a>
+      </li>
+    </ul>
+
+    <div id="ordersContainer">
+      <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Đang tải...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="emptyOrders" class="text-center py-5" style="display: none;">
+      <i class="fas fa-receipt fa-5x text-muted mb-3"></i>
+      <h4>Chưa có đơn hàng nào</h4>
+      <p class="text-muted">Bạn chưa đặt đơn hàng nào</p>
+      <a href="products.html" class="btn btn-primary">
+        <i class="fas fa-shopping-bag me-2"></i>Bắt đầu mua sắm
+      </a>
+    </div>
+  </div>
+
+  <!-- Order Detail Modal -->
+  <div class="modal fade" id="orderDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fas fa-receipt me-2"></i>Chi tiết đơn hàng</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body" id="orderDetailContent">
+          <div class="text-center py-5">
+            <div class="spinner-border text-primary" role="status"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cancel Order Modal -->
+  <div class="modal fade" id="cancelOrderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title"><i class="fas fa-ban me-2"></i>Hủy đơn hàng</h5>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <form id="cancelOrderForm">
+          <div class="modal-body">
+            <input type="hidden" id="cancelOrderIdInput">
+            <p class="mb-2">Vui lòng cho shop biết lý do hủy đơn để cải thiện dịch vụ.</p>
+            <label for="cancelReasonInput" class="form-label">Lý do hủy đơn</label>
+            <textarea
+              id="cancelReasonInput"
+              class="form-control"
+              rows="4"
+              maxlength="500"
+              placeholder="Ví dụ: Tôi cần đổi địa chỉ nhận hàng, sẽ đặt lại đơn mới..."
+              required
+            ></textarea>
+            <small class="text-muted">Tối thiểu 5 ký tự, tối đa 500 ký tự.</small>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Đóng</button>
+            <button type="submit" class="btn btn-danger" id="submitCancelOrderBtn">
+              <i class="fas fa-check me-1"></i>Xác nhận hủy đơn
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-dark text-white py-4 mt-auto">
+    <div class="container">
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          <h5><span class="brand-mark me-2">LC</span>LumiCart</h5>
+          <p>Hệ thống thương mại điện tử</p>
+          <a href="https://www.facebook.com/profile.php?id=100087395546123" target="_blank" rel="noopener noreferrer" class="text-white" title="Facebook">
+            <i class="fab fa-facebook fa-lg"></i>
+          </a>
+        </div>
+        <div class="col-md-4 mb-3">
+          <h5>Liên kết nhanh</h5>
+          <ul class="list-unstyled mb-0">
+            <li><a href="index.html" class="text-white text-decoration-none">Trang chủ</a></li>
+            <li><a href="products.html" class="text-white text-decoration-none">Sản phẩm</a></li>
+            <li><a href="cart.html" class="text-white text-decoration-none">Giỏ hàng</a></li>
+            <li><a href="orders.html" class="text-white text-decoration-none">Đơn hàng</a></li>
+          </ul>
+        </div>
+        <div class="col-md-4 mb-3 text-md-end">
+          <h5>Liên hệ</h5>
+          <p class="mb-1"><i class="fas fa-phone me-2"></i>0814586516</p>
+          <p class="mb-0"><i class="fas fa-envelope me-2"></i>EBuy@ecommerce.com</p>
+        </div>
+      </div>
+      <hr class="bg-white">
+      <div class="text-center">
+        <p class="mb-0">© 2026 LumiCart. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="../js/config.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/orders.js"></script>
+</body>
+</html>

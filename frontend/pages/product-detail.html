@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chi tiết sản phẩm - LumiCart</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+  <link rel="stylesheet" href="../css/style.css">
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark">
+    <div class="container">
+      <a class="navbar-brand" href="index.html">
+        <span class="brand-mark me-2">LC</span>LumiCart
+      </a>
+      <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <div class="collapse navbar-collapse" id="navbarNav">
+        <ul class="navbar-nav ms-auto">
+          <li class="nav-item">
+            <a class="nav-link" href="index.html"><i class="fas fa-home me-1"></i>Trang chủ</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="products.html"><i class="fas fa-box me-1"></i>Sản phẩm</a>
+          </li>
+          <li class="nav-item" id="cartNavItem">
+            <a class="nav-link" href="cart.html">
+              <i class="fas fa-shopping-cart me-1"></i>Giỏ hàng 
+              <span class="badge bg-danger" id="cartBadge">0</span>
+            </a>
+          </li>
+          <li class="nav-item" id="loginNavItem">
+            <a class="nav-link" href="login.html"><i class="fas fa-sign-in-alt me-1"></i>Đăng nhập</a>
+          </li>
+          <li class="nav-item" id="registerNavItem">
+            <a class="nav-link" href="register.html"><i class="fas fa-user-plus me-1"></i>Đăng ký</a>
+          </li>
+          <li class="nav-item dropdown" id="userNavItem" style="display: none;">
+            <a class="nav-link dropdown-toggle" href="#" id="userDropdown" role="button" data-bs-toggle="dropdown">
+              <i class="fas fa-user me-1"></i><span id="userNameDisplay"></span>
+            </a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="profile.html"><i class="fas fa-user-circle me-2"></i>Thông tin cá nhân</a></li>
+              <li><a class="dropdown-item" href="orders.html"><i class="fas fa-receipt me-2"></i>Đơn hàng của tôi</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item" href="#" id="logoutBtn"><i class="fas fa-sign-out-alt me-2"></i>Đăng xuất</a></li>
+            </ul>
+          </li>
+        </ul>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Product Detail -->
+  <div class="container my-5">
+    <nav aria-label="breadcrumb">
+      <ol class="breadcrumb">
+        <li class="breadcrumb-item"><a href="index.html">Trang chủ</a></li>
+        <li class="breadcrumb-item"><a href="products.html">Sản phẩm</a></li>
+        <li class="breadcrumb-item active" aria-current="page" id="productBreadcrumb">Chi tiết</li>
+      </ol>
+    </nav>
+
+    <div id="productDetailContainer">
+      <div class="text-center py-5">
+        <div class="spinner-border text-primary" role="status">
+          <span class="visually-hidden">Đang tải...</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="mt-5" id="recentlyViewedSection" style="display: none;">
+      <h4><i class="fas fa-clock-rotate-left me-2"></i>San pham da xem gan day</h4>
+      <div class="row mt-3" id="recentlyViewedList"></div>
+    </div>
+
+    <!-- Reviews Section -->
+    <div class="mt-5" id="reviewsSection" style="display: none;">
+      <h3><i class="fas fa-star me-2"></i>Đánh giá sản phẩm</h3>
+      <hr>
+      
+      <!-- Add Review Form (for logged in users) -->
+      <div id="addReviewForm" style="display: none;" class="mb-4">
+        <div class="card">
+          <div class="card-body">
+            <h5 class="card-title">Viết đánh giá của bạn</h5>
+            <form id="reviewForm">
+              <div class="mb-3">
+                <label class="form-label">Đánh giá</label>
+                <div class="star-rating">
+                  <i class="far fa-star" data-rating="1"></i>
+                  <i class="far fa-star" data-rating="2"></i>
+                  <i class="far fa-star" data-rating="3"></i>
+                  <i class="far fa-star" data-rating="4"></i>
+                  <i class="far fa-star" data-rating="5"></i>
+                </div>
+                <input type="hidden" id="rating" value="5">
+              </div>
+              <div class="mb-3">
+                <label for="comment" class="form-label">Nhận xét</label>
+                <textarea class="form-control" id="comment" rows="3" required></textarea>
+              </div>
+              <button type="submit" class="btn btn-primary">
+                <i class="fas fa-paper-plane me-2"></i>Gửi đánh giá
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reviews List -->
+      <div id="reviewsList"></div>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="bg-dark text-white py-4 mt-auto">
+    <div class="container">
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          <h5><span class="brand-mark me-2">LC</span>LumiCart</h5>
+          <p>Hệ thống thương mại điện tử</p>
+          <a href="https://www.facebook.com/profile.php?id=100087395546123" target="_blank" rel="noopener noreferrer" class="text-white" title="Facebook">
+            <i class="fab fa-facebook fa-lg"></i>
+          </a>
+        </div>
+        <div class="col-md-4 mb-3">
+          <h5>Liên kết nhanh</h5>
+          <ul class="list-unstyled mb-0">
+            <li><a href="index.html" class="text-white text-decoration-none">Trang chủ</a></li>
+            <li><a href="products.html" class="text-white text-decoration-none">Sản phẩm</a></li>
+            <li><a href="cart.html" class="text-white text-decoration-none">Giỏ hàng</a></li>
+            <li><a href="orders.html" class="text-white text-decoration-none">Đơn hàng</a></li>
+          </ul>
+        </div>
+        <div class="col-md-4 mb-3 text-md-end">
+          <h5>Liên hệ</h5>
+          <p class="mb-1"><i class="fas fa-phone me-2"></i>0814586516</p>
+          <p class="mb-0"><i class="fas fa-envelope me-2"></i>EBuy@ecommerce.com</p>
+        </div>
+      </div>
+      <hr class="bg-white">
+      <div class="text-center">
+        <p class="mb-0">© 2026 LumiCart. All rights reserved.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="../js/config.js"></script>
+  <script src="../js/utils.js"></script>
+  <script src="../js/auth.js"></script>
+  <script src="../js/product-detail.js"></script>
+</body>
+</html>
