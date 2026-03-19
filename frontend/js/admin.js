@@ -14,6 +14,36 @@ const VIETNAMESE_STATUS = {
   returned_rejected: 'Từ chối hoàn trả'
 };
 
+const SHIPPING_CARRIERS = [
+  'GHN',
+  'GHTK',
+  'Viettel Post',
+  'J&T Express',
+  'VNPost',
+  'Shopee Express',
+  'Khac'
+];
+
+const SHIPPING_STATUS_LABELS = {
+  created: 'Da tao van don',
+  picked_up: 'Da lay hang',
+  in_transit: 'Dang van chuyen',
+  out_for_delivery: 'Dang giao',
+  delivered: 'Da giao',
+  delivery_failed: 'Giao that bai',
+  returned_to_sender: 'Hoan ve nguoi gui'
+};
+
+const SHIPPING_STATUS_OPTIONS = [
+  'created',
+  'picked_up',
+  'in_transit',
+  'out_for_delivery',
+  'delivered',
+  'delivery_failed',
+  'returned_to_sender'
+];
+
 let adminState = {
   stats: null,
   orders: [],
@@ -331,9 +361,27 @@ function renderOrdersTable() {
   tbody.innerHTML = rows.map((order) => {
     const statusKey = normalizeStatus(order.Status);
     const actionButtons = [];
+    const shippingCarrier = String(order.ShippingCarrier || '').trim();
+    const shippingCarrierContact = String(order.ShippingCarrierContact || '').trim();
+    const trackingCode = String(order.TrackingCode || '').trim();
+    const shippingStatus = String(order.ShippingStatus || '').trim();
+    const shippingMeta = [
+      shippingCarrier ? `DVVC: ${shippingCarrier}` : '',
+      trackingCode ? `Ma VD: ${trackingCode}` : '',
+      shippingCarrierContact ? `Lien he: ${shippingCarrierContact}` : '',
+      shippingStatus ? `TTVC: ${SHIPPING_STATUS_LABELS[shippingStatus] || shippingStatus}` : ''
+    ].filter(Boolean).join(' | ');
 
     if (statusKey === 'pending') {
       actionButtons.push(`<button class="btn btn-sm btn-success" onclick="quickConfirmOrder(${order.OrderId})"><i class="fas fa-check me-1"></i>Xac nhan</button>`);
+    }
+
+    if (statusKey === 'confirmed') {
+      actionButtons.push(`<button class="btn btn-sm btn-primary" onclick="startShippingFlow(${order.OrderId})"><i class="fas fa-truck me-1"></i>Ban giao van chuyen</button>`);
+    }
+
+    if (statusKey === 'shipping') {
+      actionButtons.push(`<button class="btn btn-sm btn-outline-primary" onclick="updateShippingProgressFlow(${order.OrderId})"><i class="fas fa-route me-1"></i>Cap nhat van chuyen</button>`);
     }
 
     if (statusKey === 'returned_shipping') {
@@ -354,7 +402,10 @@ function renderOrdersTable() {
         </td>
         <td>${new Date(order.OrderDate).toLocaleString('vi-VN')}</td>
         <td class="fw-semibold">${formatCurrencyVnd(order.TotalAmount)}</td>
-        <td>${displayStatusBadge(order.Status)}</td>
+        <td>
+          ${displayStatusBadge(order.Status)}
+          ${shippingMeta ? `<div class="small text-muted mt-1">${shippingMeta}</div>` : ''}
+        </td>
         <td>
           <div class="d-flex gap-2 align-items-center">
             ${actionButtons.join('')}
@@ -396,15 +447,135 @@ async function quickConfirmOrder(orderId) {
   }
 }
 
-async function changeOrderStatus(orderId, status) {
+async function changeOrderStatus(orderId, status, extraPayload = null) {
   if (!status) return;
+
+  if (normalizeStatus(status) === 'shipping' && !extraPayload) {
+    await startShippingFlow(orderId);
+    return;
+  }
+
   try {
     loading.show();
     await apiAdmin(`/admin/orders/${orderId}`, {
       method: 'PUT',
-      body: JSON.stringify({ status })
+      body: JSON.stringify({
+        status,
+        ...(extraPayload || {})
+      })
     });
     toast.success('Cap nhat trang thai thanh cong');
+    await loadOrders();
+    await loadOverview();
+  } catch (error) {
+    toast.error(error.message);
+  } finally {
+    loading.hide();
+  }
+}
+
+async function startShippingFlow(orderId) {
+  const order = adminState.orders.find((item) => Number(item.OrderId) === Number(orderId));
+  if (!order) {
+    toast.error('Khong tim thay don hang');
+    return;
+  }
+
+  const defaultCarrier = String(order.ShippingCarrier || SHIPPING_CARRIERS[0] || 'GHN').trim();
+  const carrierInput = prompt(`Chon don vi van chuyen (${SHIPPING_CARRIERS.join(', ')}):`, defaultCarrier);
+  if (carrierInput === null) {
+    return;
+  }
+
+  const shippingCarrier = String(carrierInput || '').trim();
+  if (!shippingCarrier) {
+    toast.error('Don vi van chuyen khong duoc de trong');
+    return;
+  }
+
+  const contactInput = prompt('Nhap thong tin lien he don vi van chuyen (SDT/email):', String(order.ShippingCarrierContact || ''));
+  if (contactInput === null) {
+    return;
+  }
+
+  const shippingCarrierContact = String(contactInput || '').trim();
+  if (!shippingCarrierContact) {
+    toast.error('Thong tin lien he don vi van chuyen khong duoc de trong');
+    return;
+  }
+
+  const trackingCode = String(prompt('Nhap ma van don (co the de trong neu chua co):', String(order.TrackingCode || '')) || '').trim();
+  const shippingNote = String(prompt('Ghi chu van chuyen (khong bat buoc):', String(order.ShippingNote || '')) || '').trim();
+
+  await changeOrderStatus(orderId, 'Đang giao', {
+    shippingCarrier,
+    shippingCarrierContact,
+    trackingCode: trackingCode || null,
+    shippingNote: shippingNote || null,
+    shippingStatus: 'in_transit'
+  });
+}
+
+async function updateShippingProgressFlow(orderId) {
+  const order = adminState.orders.find((item) => Number(item.OrderId) === Number(orderId));
+  if (!order) {
+    toast.error('Khong tim thay don hang');
+    return;
+  }
+
+  const carrierInput = prompt(`Don vi van chuyen (${SHIPPING_CARRIERS.join(', ')}):`, String(order.ShippingCarrier || SHIPPING_CARRIERS[0]));
+  if (carrierInput === null) return;
+  const shippingCarrier = String(carrierInput || '').trim();
+  if (!shippingCarrier) {
+    toast.error('Don vi van chuyen khong duoc de trong');
+    return;
+  }
+
+  const contactInput = prompt('Thong tin lien he don vi van chuyen:', String(order.ShippingCarrierContact || ''));
+  if (contactInput === null) return;
+  const shippingCarrierContact = String(contactInput || '').trim();
+  if (!shippingCarrierContact) {
+    toast.error('Thong tin lien he khong duoc de trong');
+    return;
+  }
+
+  const trackingInput = prompt('Ma van don:', String(order.TrackingCode || ''));
+  if (trackingInput === null) return;
+  const trackingCode = String(trackingInput || '').trim();
+  if (!trackingCode) {
+    toast.error('Ma van don khong duoc de trong');
+    return;
+  }
+
+  const currentStatus = String(order.ShippingStatus || 'in_transit').trim();
+  const shippingStatusInput = prompt(
+    `Trang thai van chuyen (${SHIPPING_STATUS_OPTIONS.join(', ')}):`,
+    SHIPPING_STATUS_OPTIONS.includes(currentStatus) ? currentStatus : 'in_transit'
+  );
+  if (shippingStatusInput === null) return;
+
+  const shippingStatus = String(shippingStatusInput || '').trim();
+  if (!SHIPPING_STATUS_OPTIONS.includes(shippingStatus)) {
+    toast.error('Trang thai van chuyen khong hop le');
+    return;
+  }
+
+  const shippingNote = String(prompt('Ghi chu van chuyen (khong bat buoc):', String(order.ShippingNote || '')) || '').trim();
+
+  try {
+    loading.show();
+    await apiAdmin(`/admin/orders/${orderId}/shipping`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        shippingCarrier,
+        shippingCarrierContact,
+        trackingCode,
+        shippingStatus,
+        shippingNote: shippingNote || null
+      })
+    });
+
+    toast.success('Da cap nhat trang thai van chuyen');
     await loadOrders();
     await loadOverview();
   } catch (error) {
@@ -464,9 +635,11 @@ async function loadCategories() {
 
 function renderCategoryOptions() {
   const select = document.getElementById('productCategoryInput');
-  select.innerHTML = adminState.categories.map((cat) => {
+  const categoryOptions = adminState.categories.map((cat) => {
     return `<option value="${cat.category_id}">${cat.category_name}</option>`;
   }).join('');
+
+  select.innerHTML = `<option value="">-- Chon danh muc --</option>${categoryOptions}`;
 }
 
 async function loadProducts() {
@@ -813,9 +986,7 @@ function resetProductForm() {
   document.getElementById('productStockInput').value = '';
   document.getElementById('productImageInput').value = '';
   document.getElementById('productDescriptionInput').value = '';
-  if (adminState.categories.length) {
-    document.getElementById('productCategoryInput').value = adminState.categories[0].category_id;
-  }
+  document.getElementById('productCategoryInput').value = '';
 
   renderVariantRows([]);
 }
@@ -893,6 +1064,11 @@ async function saveProduct() {
 
   if (payload.salePrice !== null && payload.salePrice >= payload.price) {
     toast.error('Gia sale phai nho hon gia goc');
+    return;
+  }
+
+  if (!Number.isInteger(payload.categoryId) || payload.categoryId <= 0) {
+    toast.error('Vui long chon danh muc cho san pham');
     return;
   }
 
@@ -999,10 +1175,23 @@ async function duplicateProduct(productId) {
   }
 }
 
-function toCsvSafe(value) {
+function toCsvText(value) {
   const text = String(value ?? '');
   const escaped = text.replace(/"/g, '""');
   return `"${escaped}"`;
+}
+
+function toExcelNumber(value, fractionDigits = 0) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) {
+    return '0';
+  }
+
+  return num.toLocaleString('vi-VN', {
+    useGrouping: false,
+    minimumFractionDigits: fractionDigits,
+    maximumFractionDigits: fractionDigits
+  });
 }
 
 function exportLowStockCsv() {
@@ -1015,32 +1204,34 @@ function exportLowStockCsv() {
     return;
   }
 
-  const header = ['ProductId', 'ProductName', 'Category', 'Price', 'Stock', 'VariantCount'];
+  const delimiter = ';';
+  const header = ['Mã sản phẩm', 'Tên sản phẩm', 'Danh mục', 'Giá', 'Tồn kho', 'Số biến thể'];
   const rows = lowStock.map((item) => {
     const variantCount = Array.isArray(item.variants) ? item.variants.length : 0;
     return [
-      item.product_id,
-      item.product_name,
-      item.category_name || '',
-      Number(item.price) || 0,
-      Number(item.stock_quantity) || 0,
-      variantCount
-    ].map(toCsvSafe).join(',');
+      toExcelNumber(item.product_id),
+      toCsvText(item.product_name),
+      toCsvText(item.category_name || ''),
+      toExcelNumber(item.price, 2),
+      toExcelNumber(item.stock_quantity),
+      toExcelNumber(variantCount)
+    ].join(delimiter);
   });
 
-  const csvContent = `${header.join(',')}\n${rows.join('\n')}`;
+  // BOM + sep header giup Excel mo UTF-8 tieng Viet va tach cot dung theo locale.
+  const csvContent = `\uFEFFsep=${delimiter}\r\n${header.map(toCsvText).join(delimiter)}\r\n${rows.join('\r\n')}`;
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   const timestamp = new Date().toISOString().slice(0, 10);
   link.href = url;
-  link.download = `low-stock-${timestamp}.csv`;
+  link.download = `ton-kho-thap-${timestamp}.csv`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 
-  toast.success(`Da xuat ${lowStock.length} san pham ton kho thap`);
+  toast.success(`Đã xuất ${lowStock.length} sản phẩm tồn kho thấp (định dạng Excel)`);
 }
 
 async function refreshAllData() {
@@ -1155,6 +1346,8 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 window.quickConfirmOrder = quickConfirmOrder;
 window.changeOrderStatus = changeOrderStatus;
+window.startShippingFlow = startShippingFlow;
+window.updateShippingProgressFlow = updateShippingProgressFlow;
 window.processReturn = processReturn;
 window.openEditProduct = openEditProduct;
 window.deleteProduct = deleteProduct;

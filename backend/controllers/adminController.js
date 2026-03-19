@@ -52,6 +52,28 @@ const normalizeOrderStatus = (status) => {
   return statusMap[normalized] || normalized;
 };
 
+const normalizeShippingStatus = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  const statusMap = {
+    'created': 'created',
+    'đã tạo vận đơn': 'created',
+    'picked_up': 'picked_up',
+    'đã lấy hàng': 'picked_up',
+    'in_transit': 'in_transit',
+    'đang vận chuyển': 'in_transit',
+    'out_for_delivery': 'out_for_delivery',
+    'đang giao': 'out_for_delivery',
+    'delivered': 'delivered',
+    'đã giao': 'delivered',
+    'delivery_failed': 'delivery_failed',
+    'giao thất bại': 'delivery_failed',
+    'returned_to_sender': 'returned_to_sender',
+    'hoàn về người gửi': 'returned_to_sender'
+  };
+
+  return statusMap[normalized] || normalized;
+};
+
 const hardenImageByPublicPath = async (publicPath) => {
   const absolutePath = resolveUploadFilePath(publicPath);
   if (!absolutePath) {
@@ -421,6 +443,10 @@ const updateOrderStatus = async (req, res) => {
   try {
     const orderId = parseInt(req.params.id);
     const { status } = req.body;
+    const shippingCarrier = String(req.body.shippingCarrier || '').trim() || null;
+    const shippingCarrierContact = String(req.body.shippingCarrierContact || '').trim() || null;
+    const trackingCode = String(req.body.trackingCode || '').trim() || null;
+    const shippingNote = String(req.body.shippingNote || '').trim() || null;
 
     const currentOrder = await OrderModel.findById(orderId);
     if (!currentOrder) {
@@ -431,8 +457,28 @@ const updateOrderStatus = async (req, res) => {
     }
 
     const previousStatus = normalizeOrderStatus(currentOrder.Status);
+    const requestedStatus = normalizeOrderStatus(status);
+
+    if (requestedStatus === 'shipping' && !shippingCarrier) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng chọn đơn vị vận chuyển khi chuyển sang trạng thái đang giao'
+      });
+    }
+
+    if (requestedStatus === 'shipping' && !shippingCarrierContact) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập thông tin liên hệ đơn vị vận chuyển'
+      });
+    }
     
-    const order = await OrderModel.updateStatus(orderId, status);
+    const order = await OrderModel.updateStatus(orderId, status, {
+      shippingCarrier,
+      shippingCarrierContact,
+      trackingCode,
+      shippingNote
+    });
     
     if (!order) {
       return res.status(404).json({
@@ -470,13 +516,94 @@ const updateOrderStatus = async (req, res) => {
       orderId,
       previousStatus,
       newStatus,
-      emailSent
+      emailSent,
+      shippingCarrier,
+      shippingCarrierContact,
+      hasTrackingCode: Boolean(trackingCode)
     });
   } catch (error) {
     console.error('Update order status error:', error);
     res.status(500).json({
       success: false,
       message: 'Lỗi khi cập nhật trạng thái: ' + error.message
+    });
+  }
+};
+
+// Cập nhật trạng thái vận chuyển / mã vận đơn (admin hoặc callback giả lập từ đơn vị vận chuyển)
+const updateShippingProgress = async (req, res) => {
+  try {
+    const orderId = parseInt(req.params.id, 10);
+    const shippingCarrier = String(req.body.shippingCarrier || '').trim() || null;
+    const shippingCarrierContact = String(req.body.shippingCarrierContact || '').trim() || null;
+    const trackingCode = String(req.body.trackingCode || '').trim() || null;
+    const shippingNote = String(req.body.shippingNote || '').trim() || null;
+    const shippingStatus = normalizeShippingStatus(req.body.shippingStatus);
+
+    const allowedShippingStatuses = [
+      'created',
+      'picked_up',
+      'in_transit',
+      'out_for_delivery',
+      'delivered',
+      'delivery_failed',
+      'returned_to_sender'
+    ];
+
+    if (!allowedShippingStatuses.includes(shippingStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Trạng thái vận chuyển không hợp lệ'
+      });
+    }
+
+    const currentOrder = await OrderModel.findById(orderId);
+    if (!currentOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy đơn hàng'
+      });
+    }
+
+    if (!trackingCode && !currentOrder.TrackingCode) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng nhập mã vận đơn trước khi cập nhật trạng thái vận chuyển'
+      });
+    }
+
+    const updatedOrder = await OrderModel.updateShippingProgress(orderId, {
+      shippingCarrier,
+      shippingCarrierContact,
+      trackingCode,
+      shippingStatus,
+      shippingNote
+    });
+
+    if (!updatedOrder) {
+      return res.status(404).json({
+        success: false,
+        message: 'Không tìm thấy đơn hàng'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Cập nhật vận chuyển thành công',
+      data: updatedOrder
+    });
+
+    auditLogger.logAdminAction(req, 'order_shipping_progress_updated', {
+      orderId,
+      shippingStatus,
+      shippingCarrier,
+      hasTrackingCode: Boolean(trackingCode || currentOrder.TrackingCode)
+    });
+  } catch (error) {
+    console.error('Update shipping progress error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi cập nhật vận chuyển: ' + error.message
     });
   }
 };
@@ -810,6 +937,7 @@ module.exports = {
   // Đơn hàng
   getAllOrders,
   updateOrderStatus,
+  updateShippingProgress,
   processReturnRequest,
   sendPromotionCampaign,
   

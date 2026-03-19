@@ -52,6 +52,9 @@ router.get('/orders', adminController.getAllOrders);
 // Cập nhật trạng thái đơn hàng
 router.put('/orders/:id', idValidation, orderStatusValidation, adminController.updateOrderStatus);
 
+// Cập nhật trạng thái vận chuyển / mã vận đơn
+router.put('/orders/:id/shipping', idValidation, adminController.updateShippingProgress);
+
 // Xử lý yêu cầu hoàn trả sau khi shop kiểm hàng
 router.put('/orders/:id/process-return', idValidation, returnProcessValidation, adminController.processReturnRequest);
 

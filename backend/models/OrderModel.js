@@ -8,6 +8,7 @@ const { sql, getPool } = require('../config/database');
 class OrderModel {
   static returnColumnsEnsured = false;
   static orderItemVariantColumnsEnsured = false;
+  static shippingColumnsEnsured = false;
 
   static toValidVariantId(value) {
     const parsed = Number(value);
@@ -81,6 +82,40 @@ class OrderModel {
 
     this.orderItemVariantColumnsEnsured = true;
   }
+
+  static async ensureShippingColumns(pool) {
+    if (this.shippingColumnsEnsured) {
+      return;
+    }
+
+    await pool.request().query(`
+      IF COL_LENGTH('Orders', 'ShippingCarrier') IS NULL
+        ALTER TABLE Orders ADD ShippingCarrier NVARCHAR(120) NULL;
+
+      IF COL_LENGTH('Orders', 'ShippingCarrierContact') IS NULL
+        ALTER TABLE Orders ADD ShippingCarrierContact NVARCHAR(255) NULL;
+
+      IF COL_LENGTH('Orders', 'TrackingCode') IS NULL
+        ALTER TABLE Orders ADD TrackingCode NVARCHAR(120) NULL;
+
+      IF COL_LENGTH('Orders', 'ShippingNote') IS NULL
+        ALTER TABLE Orders ADD ShippingNote NVARCHAR(500) NULL;
+
+      IF COL_LENGTH('Orders', 'ShippedAt') IS NULL
+        ALTER TABLE Orders ADD ShippedAt DATETIME NULL;
+
+      IF COL_LENGTH('Orders', 'DeliveredAt') IS NULL
+        ALTER TABLE Orders ADD DeliveredAt DATETIME NULL;
+
+      IF COL_LENGTH('Orders', 'ShippingStatus') IS NULL
+        ALTER TABLE Orders ADD ShippingStatus NVARCHAR(40) NULL;
+
+      IF COL_LENGTH('Orders', 'ShippingStatusUpdatedAt') IS NULL
+        ALTER TABLE Orders ADD ShippingStatusUpdatedAt DATETIME NULL;
+    `);
+
+    this.shippingColumnsEnsured = true;
+  }
   /**
    * Tạo đơn hàng mới
    * @param {Object} orderData
@@ -93,6 +128,7 @@ class OrderModel {
     try {
       await this.ensureReturnColumns(pool);
       await this.ensureOrderItemVariantColumns(pool);
+      await this.ensureShippingColumns(pool);
       await transaction.begin();
       
       const {
@@ -199,6 +235,7 @@ class OrderModel {
       const pool = getPool();
       await this.ensureReturnColumns(pool);
       await this.ensureOrderItemVariantColumns(pool);
+      await this.ensureShippingColumns(pool);
       
       // Lấy thông tin order
       const orderResult = await pool.request()
@@ -248,11 +285,14 @@ class OrderModel {
       const pool = getPool();
       await this.ensureReturnColumns(pool);
       await this.ensureOrderItemVariantColumns(pool);
+      await this.ensureShippingColumns(pool);
       const result = await pool.request()
         .input('userId', sql.Int, userId)
         .query(`
           SELECT o.OrderId, o.TotalAmount, o.Status, o.OrderDate, o.ShippingAddress,
                o.PaymentMethod, o.CouponCode, o.DiscountAmount,
+                 o.ShippingCarrier, o.ShippingCarrierContact, o.TrackingCode, o.ShippingNote,
+                 o.ShippedAt, o.DeliveredAt, o.ShippingStatus, o.ShippingStatusUpdatedAt,
                  o.CancelReason, o.CancelledAt,
                  o.ReturnReason, o.ReturnRequestAt, o.ReturnShippedAt,
                  o.ReturnDecision, o.ReturnDecisionReason, o.ReturnInspectedAt,
@@ -263,6 +303,8 @@ class OrderModel {
           WHERE o.UserId = @userId
           GROUP BY o.OrderId, o.TotalAmount, o.Status, o.OrderDate, o.ShippingAddress,
                    o.PaymentMethod, o.CouponCode, o.DiscountAmount,
+                   o.ShippingCarrier, o.ShippingCarrierContact, o.TrackingCode, o.ShippingNote,
+                   o.ShippedAt, o.DeliveredAt, o.ShippingStatus, o.ShippingStatusUpdatedAt,
                    o.CancelReason, o.CancelledAt,
                    o.ReturnReason, o.ReturnRequestAt, o.ReturnShippedAt,
                    o.ReturnDecision, o.ReturnDecisionReason, o.ReturnInspectedAt,
@@ -285,11 +327,14 @@ class OrderModel {
       const pool = getPool();
       await this.ensureReturnColumns(pool);
       await this.ensureOrderItemVariantColumns(pool);
+      await this.ensureShippingColumns(pool);
       const result = await pool.request()
         .query(`
           SELECT o.OrderId, o.UserId, o.TotalAmount, o.ShippingAddress, o.Phone,
                  o.PaymentMethod, o.AddressId, o.Status, o.OrderDate, o.CreatedAt, o.UpdatedAt,
                  o.CouponCode, o.DiscountAmount,
+                 o.ShippingCarrier, o.ShippingCarrierContact, o.TrackingCode, o.ShippingNote,
+               o.ShippedAt, o.DeliveredAt, o.ShippingStatus, o.ShippingStatusUpdatedAt,
                  o.CancelReason, o.CancelledAt,
                  o.ReturnReason, o.ReturnRequestAt, o.ReturnShippedAt,
                  o.ReturnDecision, o.ReturnDecisionReason, o.ReturnInspectedAt,
@@ -302,6 +347,8 @@ class OrderModel {
           GROUP BY o.OrderId, o.UserId, o.TotalAmount, o.ShippingAddress, o.Phone,
                    o.PaymentMethod, o.AddressId, o.Status, o.OrderDate, o.CreatedAt, o.UpdatedAt,
                    o.CouponCode, o.DiscountAmount,
+                   o.ShippingCarrier, o.ShippingCarrierContact, o.TrackingCode, o.ShippingNote,
+                   o.ShippedAt, o.DeliveredAt, o.ShippingStatus, o.ShippingStatusUpdatedAt,
                    o.CancelReason, o.CancelledAt,
                    o.ReturnReason, o.ReturnRequestAt, o.ReturnShippedAt,
                    o.ReturnDecision, o.ReturnDecisionReason, o.ReturnInspectedAt,
@@ -322,20 +369,104 @@ class OrderModel {
    * @param {string} status
    * @returns {Promise<Object>}
    */
-  static async updateStatus(orderId, status) {
+  static async updateStatus(orderId, status, shippingInfo = {}) {
     try {
       const pool = getPool();
+      await this.ensureShippingColumns(pool);
+
+      const shippingCarrier = shippingInfo.shippingCarrier || null;
+      const shippingCarrierContact = shippingInfo.shippingCarrierContact || null;
+      const trackingCode = shippingInfo.trackingCode || null;
+      const shippingNote = shippingInfo.shippingNote || null;
+
       const result = await pool.request()
         .input('orderId', sql.Int, orderId)
         .input('status', sql.NVarChar, status)
+        .input('shippingCarrier', sql.NVarChar, shippingCarrier)
+        .input('shippingCarrierContact', sql.NVarChar, shippingCarrierContact)
+        .input('trackingCode', sql.NVarChar, trackingCode)
+        .input('shippingNote', sql.NVarChar, shippingNote)
         .query(`
           UPDATE Orders 
-          SET Status = @status
+          SET Status = @status,
+              ShippingCarrier = COALESCE(@shippingCarrier, ShippingCarrier),
+              ShippingCarrierContact = COALESCE(@shippingCarrierContact, ShippingCarrierContact),
+              TrackingCode = COALESCE(@trackingCode, TrackingCode),
+              ShippingNote = COALESCE(@shippingNote, ShippingNote),
+              ShippingStatus = CASE
+                WHEN LOWER(LTRIM(RTRIM(@status))) IN (N'shipping', N'đang giao') THEN N'in_transit'
+                WHEN LOWER(LTRIM(RTRIM(@status))) IN (N'completed', N'hoàn thành') THEN N'delivered'
+                ELSE ShippingStatus
+              END,
+              ShippingStatusUpdatedAt = CASE
+                WHEN LOWER(LTRIM(RTRIM(@status))) IN (N'shipping', N'đang giao', N'completed', N'hoàn thành') THEN GETDATE()
+                ELSE ShippingStatusUpdatedAt
+              END,
+              ShippedAt = CASE
+                WHEN LOWER(LTRIM(RTRIM(@status))) IN (N'shipping', N'đang giao') AND ShippedAt IS NULL THEN GETDATE()
+                ELSE ShippedAt
+              END,
+              DeliveredAt = CASE
+                WHEN LOWER(LTRIM(RTRIM(@status))) IN (N'completed', N'hoàn thành') THEN GETDATE()
+                ELSE DeliveredAt
+              END
           OUTPUT INSERTED.*
           WHERE OrderId = @orderId
         `);
       
       return result.recordset[0];
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  static async updateShippingProgress(orderId, shippingData = {}) {
+    try {
+      const pool = getPool();
+      await this.ensureShippingColumns(pool);
+
+      const shippingCarrier = shippingData.shippingCarrier || null;
+      const shippingCarrierContact = shippingData.shippingCarrierContact || null;
+      const trackingCode = shippingData.trackingCode || null;
+      const shippingStatus = shippingData.shippingStatus || null;
+      const shippingNote = shippingData.shippingNote || null;
+
+      const result = await pool.request()
+        .input('orderId', sql.Int, orderId)
+        .input('shippingCarrier', sql.NVarChar, shippingCarrier)
+        .input('shippingCarrierContact', sql.NVarChar, shippingCarrierContact)
+        .input('trackingCode', sql.NVarChar, trackingCode)
+        .input('shippingStatus', sql.NVarChar, shippingStatus)
+        .input('shippingNote', sql.NVarChar, shippingNote)
+        .query(`
+          UPDATE Orders
+          SET ShippingCarrier = COALESCE(@shippingCarrier, ShippingCarrier),
+              ShippingCarrierContact = COALESCE(@shippingCarrierContact, ShippingCarrierContact),
+              TrackingCode = COALESCE(@trackingCode, TrackingCode),
+              ShippingStatus = COALESCE(@shippingStatus, ShippingStatus),
+              ShippingNote = COALESCE(@shippingNote, ShippingNote),
+              ShippingStatusUpdatedAt = CASE
+                WHEN @shippingStatus IS NOT NULL THEN GETDATE()
+                ELSE ShippingStatusUpdatedAt
+              END,
+              Status = CASE
+                WHEN @shippingStatus = N'delivered' THEN N'Hoàn thành'
+                WHEN @shippingStatus = N'delivery_failed' THEN N'Đã xác nhận'
+                ELSE Status
+              END,
+              ShippedAt = CASE
+                WHEN @shippingStatus IN (N'in_transit', N'out_for_delivery', N'delivered') AND ShippedAt IS NULL THEN GETDATE()
+                ELSE ShippedAt
+              END,
+              DeliveredAt = CASE
+                WHEN @shippingStatus = N'delivered' THEN GETDATE()
+                ELSE DeliveredAt
+              END
+          OUTPUT INSERTED.*
+          WHERE OrderId = @orderId
+        `);
+
+      return result.recordset[0] || null;
     } catch (error) {
       throw error;
     }
