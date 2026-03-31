@@ -7,6 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
   loadProfile();
   setupTabs();
   setupForms();
+  initAvatarUpload();
 });
 
 function checkAuth() {
@@ -74,6 +75,12 @@ function displayProfile(user) {
   // Sidebar
   document.getElementById('sidebarName').textContent = user.fullName || user.full_name || 'Người dùng';
   document.getElementById('sidebarEmail').textContent = user.email || '';
+
+  // Display avatar
+  const avatar = user.avatar_url || user.profileImage || user.avatar;
+  if (avatar) {
+    document.getElementById('profileAvatar').src = getImageUrl(avatar);
+  }
 
   // Form fields
   document.getElementById('fullName').value = user.fullName || user.full_name || '';
@@ -215,5 +222,111 @@ function updateNavbarUserName() {
   const displayName = userInfo.fullName || userInfo.full_name;
   if (userNameDisplay && displayName) {
     userNameDisplay.textContent = displayName;
+  }
+}
+
+// ========== Avatar Upload Management ==========
+let uploadAvatarModal = null;
+
+function initAvatarUpload() {
+  const uploadModalEl = document.getElementById('uploadAvatarModal');
+  if (uploadModalEl) {
+    uploadAvatarModal = new bootstrap.Modal(uploadModalEl);
+  }
+  
+  // Setup file preview
+  document.getElementById('avatarFileInput')?.addEventListener('change', function(e) {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const preview = document.getElementById('uploadPreview');
+        preview.src = event.target.result;
+        preview.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+  
+  // Setup upload button
+  document.getElementById('uploadAvatarBtn')?.addEventListener('click', uploadProfileAvatar);
+}
+
+async function uploadProfileAvatar() {
+  const token = localStorage.getItem('token');
+  const fileInput = document.getElementById('avatarFileInput');
+  const file = fileInput.files[0];
+  
+  if (!file) {
+    showAlert('Vui lòng chọn ảnh', 'warning');
+    return;
+  }
+  
+  // Validate file size (5MB)
+  if (file.size > 5 * 1024 * 1024) {
+    showAlert('Ảnh không được vượt quá 5MB', 'danger');
+    return;
+  }
+  
+  // Validate file type
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    showAlert('Chỉ chấp nhận ảnh JPG, PNG hoặc WebP', 'danger');
+    return;
+  }
+  
+  const uploadBtn = document.getElementById('uploadAvatarBtn');
+  uploadBtn.disabled = true;
+  uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Đang tải...';
+  
+  try {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    
+    const response = await fetch(`${API_BASE_URL}/auth/upload-avatar`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok && data.success) {
+      showAlert('Cập nhật ảnh đại diện thành công!', 'success');
+      
+      // Update avatar display
+      const avatarUrl = data.data?.avatar_url || data.avatar_url;
+      if (avatarUrl) {
+        document.getElementById('profileAvatar').src = getImageUrl(avatarUrl);
+      }
+      
+      // Update sidebar avatar
+      const sidebarAvatar = document.getElementById('sidebarName');
+      if (sidebarAvatar) {
+        // Just make sure the main avatar update worked
+      }
+      
+      // Update navbar if needed
+      const userInfo = JSON.parse(localStorage.getItem('userInfo') || '{}');
+      userInfo.avatar_url = avatarUrl;
+      userInfo.profileImage = avatarUrl;
+      localStorage.setItem('userInfo', JSON.stringify(userInfo));
+      
+      // Close modal
+      if (uploadAvatarModal) {
+        uploadAvatarModal.hide();
+      }
+      fileInput.value = '';
+      document.getElementById('uploadPreview').style.display = 'none';
+    } else {
+      showAlert(data.message || 'Tải ảnh thất bại', 'danger');
+    }
+  } catch (error) {
+    console.error('Error uploading avatar:', error);
+    showAlert('Có lỗi xảy ra khi tải ảnh', 'danger');
+  } finally {
+    uploadBtn.disabled = false;
+    uploadBtn.innerHTML = '<i class="fas fa-upload me-2"></i>Tải lên';
   }
 }

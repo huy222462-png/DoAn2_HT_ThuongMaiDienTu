@@ -1,6 +1,3 @@
-/**
- * Admin Dashboard Script
- */
 
 const VIETNAMESE_STATUS = {
   pending: 'Chờ xác nhận',
@@ -46,6 +43,7 @@ const SHIPPING_STATUS_OPTIONS = [
 
 let adminState = {
   stats: null,
+  aiInsights: null,
   orders: [],
   products: [],
   users: [],
@@ -57,11 +55,96 @@ let adminState = {
   revenueChart: null
 };
 
+function renderAiInsightItem(item, mode = 'promote') {
+  const stockText = Number(item.stock) > 0 ? `Ton ${Number(item.stock)}` : 'Het hang';
+  const soldText = `Ban 30 ngay: ${Number(item.sold30) || 0}`;
+  const profitText = `Loi nhuan uoc tinh: ${formatCurrencyVnd(item.estimatedProfit30 || 0)}`;
+  const discountText = mode === 'discount' && Number(item.discountSuggestion) > 0
+    ? ` | Giam de xuat: ${Number(item.discountSuggestion)}%`
+    : '';
+
+  return `
+    <div class="border rounded p-2 mb-2">
+      <div class="fw-semibold">${item.productName || 'San pham'}</div>
+      <div class="small text-muted">${item.categoryName || 'Chua phan loai'}</div>
+      <div class="small text-muted">${soldText} | ${stockText}${discountText}</div>
+      <div class="small text-muted">${profitText}</div>
+      <div class="small mt-1">${item.recommendation || ''}</div>
+    </div>
+  `;
+}
+
+function renderAiInsights() {
+  const container = document.getElementById('aiInsightsPanel');
+  if (!container) return;
+
+  const data = adminState.aiInsights;
+  if (!data) {
+    container.innerHTML = '<p class="text-muted mb-0">Chua co du lieu phan tich AI.</p>';
+    return;
+  }
+
+  const summary = data.summary || {};
+  const shouldPromote = Array.isArray(data.shouldPromote) ? data.shouldPromote : [];
+  const shouldDiscount = Array.isArray(data.shouldDiscount) ? data.shouldDiscount : [];
+  const actions = Array.isArray(data.actions) ? data.actions : [];
+
+  container.innerHTML = `
+    <div class="mb-2 small text-muted">
+      SP phan tich: ${summary.productAnalyzed || 0} | Doanh thu 30 ngay: ${formatCurrencyVnd(summary.estimatedRevenue30 || 0)}
+    </div>
+    <div class="mb-2 small text-muted">
+      Loi nhuan 30 ngay: ${formatCurrencyVnd(summary.estimatedProfit30 || 0)} | Bien loi nhuan: ${(summary.estimatedProfitMargin30 || 0)}%
+    </div>
+
+    <div class="mt-2">
+      <div class="fw-semibold mb-1"><i class="fas fa-arrow-trend-up me-1 text-success"></i>Nen day ban</div>
+      ${shouldPromote.length
+        ? shouldPromote.slice(0, 4).map((item) => renderAiInsightItem(item, 'promote')).join('')
+        : '<div class="small text-muted mb-2">Chua co de xuat day ban ro rang.</div>'}
+    </div>
+
+    <div class="mt-2">
+      <div class="fw-semibold mb-1"><i class="fas fa-tags me-1 text-warning"></i>Nen giam gia / xa ton</div>
+      ${shouldDiscount.length
+        ? shouldDiscount.slice(0, 4).map((item) => renderAiInsightItem(item, 'discount')).join('')
+        : '<div class="small text-muted mb-2">Khong co nhom ban cham dang ke.</div>'}
+    </div>
+
+    <div class="mt-2 pt-2 border-top">
+      <div class="fw-semibold mb-1"><i class="fas fa-list-check me-1"></i>Hanh dong de xuat</div>
+      ${actions.length
+        ? actions.map((item) => `<div class="small text-muted">- ${item}</div>`).join('')
+        : '<div class="small text-muted">Chua co hanh dong de xuat.</div>'}
+    </div>
+  `;
+}
+
+async function loadAiInsights() {
+  const container = document.getElementById('aiInsightsPanel');
+  if (container) {
+    container.innerHTML = '<p class="text-muted mb-0">Dang tai phan tich AI...</p>';
+  }
+
+  try {
+    const data = await apiAdmin('/admin/ai-insights');
+    adminState.aiInsights = data.data || null;
+    renderAiInsights();
+  } catch (error) {
+    adminState.aiInsights = null;
+    if (container) {
+      container.innerHTML = `
+        <div class="small text-danger mb-1">Khong tai duoc AI insight: ${error.message}</div>
+        <div class="small text-muted">Hay bam "Phan tich lai" sau khi dang nhap lai hoac kiem tra ket noi backend.</div>
+      `;
+    }
+    throw error;
+  }
+}
+
 function initAdminReveal() {
   const elements = document.querySelectorAll('.reveal-on-scroll');
   if (!elements.length) return;
-
-  // Fallback: luôn hiển thị để tránh trạng thái bị "che" khi observer không chạy.
   elements.forEach((element) => {
     element.classList.add('is-visible');
   });
@@ -140,21 +223,57 @@ function formatCurrencyVnd(value) {
 
 async function apiAdmin(path, options = {}) {
   const token = localStorage.getItem('token');
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-      ...(options.headers || {})
-    }
-  });
+  const normalizedPath = String(path || '').startsWith('/') ? path : `/${path}`;
+  const headers = {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+    ...(options.headers || {})
+  };
 
-  const data = await response.json();
-  if (!response.ok) {
-    throw new Error(data.message || 'Yeu cau that bai');
+  const candidateBaseUrls = Array.from(new Set([
+    API_BASE_URL,
+    API_BASE_URL.replace('http://localhost:5000', 'http://localhost:5001'),
+    API_BASE_URL.replace('http://localhost:5000', 'http://localhost:5002')
+  ]));
+
+  // Retry local fallback ports to avoid stale backend process conflicts during development.
+  let lastError = null;
+
+  for (const baseUrl of candidateBaseUrls) {
+    try {
+      const response = await fetch(`${baseUrl}${normalizedPath}`, {
+        ...options,
+        headers
+      });
+
+      const data = await response.json();
+      if (response.ok) {
+        return data;
+      }
+
+      const message = data.message || 'Yeu cau that bai';
+      if (response.status === 401) {
+        throw new Error('Phien dang nhap admin da het han. Vui long dang nhap lai.');
+      }
+      if (response.status === 403) {
+        throw new Error('Tai khoan hien tai khong co quyen admin.');
+      }
+      if (String(message).includes('ProfileImage') || response.status >= 500) {
+        lastError = new Error(message);
+        continue;
+      }
+
+      throw new Error(message);
+    } catch (error) {
+      lastError = error;
+      if (String(error.message || '').includes('dang nhap admin da het han')
+        || String(error.message || '').includes('khong co quyen admin')) {
+        throw error;
+      }
+    }
   }
 
-  return data;
+  throw lastError || new Error('Yeu cau that bai');
 }
 
 async function loadOverview() {
@@ -964,8 +1083,6 @@ function recalculateBaseFieldsFromVariants() {
 
   const minPrice = Math.min(...variants.map((item) => item.price));
   const totalStock = variants.reduce((sum, item) => sum + item.stock, 0);
-
-  // Gia/ton kho san pham chinh duoc admin tu quan ly, khong ghi de tu dong tu bien the.
   priceInput.readOnly = false;
   stockInput.readOnly = false;
 
@@ -1180,6 +1297,80 @@ function toCsvText(value) {
   const escaped = text.replace(/"/g, '""');
   return `"${escaped}"`;
 }
+async function handleProductImageSelect(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  if (file.size > 10 * 1024 * 1024) {
+    toast.error('Anh khong duoc vuot qua 10MB');
+    return;
+  }
+  
+  if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+    toast.error('Chi chap nhan anh JPG, PNG hoac WebP');
+    return;
+  }
+  
+  const uploadBtn = document.getElementById('uploadProductImageBtn');
+  uploadBtn.disabled = true;
+  uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Tai...';
+  
+  try {
+    const token = localStorage.getItem('token');
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('type', 'product');
+    
+    const response = await fetch(`${API_BASE_URL}/products/upload-image`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    
+    const data = await response.json();
+    
+    if (response.ok && data.success) {
+      const imageUrl = data.data?.image_url || data.image_url;
+      if (imageUrl) {
+        document.getElementById('productImageInput').value = imageUrl;
+        const previewImg = document.getElementById('productImagePreviewImg');
+        previewImg.src = imageUrl;
+        previewImg.style.display = 'block';
+        
+        toast.success('Tai anh thanh cong!');
+      }
+    } else {
+      toast.error(data.message || 'Tai anh that bai');
+    }
+  } catch (error) {
+    console.error('Upload error:', error);
+    toast.error('Co loi xay ra khi tai anh');
+  } finally {
+    uploadBtn.disabled = false;
+    uploadBtn.innerHTML = '<i class="fas fa-upload me-1"></i>Tai anh';
+    e.target.value = ''; // Reset input
+  }
+}
+
+function previewProductImage() {
+  const imageUrl = document.getElementById('productImageInput').value.trim();
+  
+  if (!imageUrl) {
+    toast.warning('Vui long nhap duong dan anh');
+    return;
+  }
+  
+  const previewImg = document.getElementById('productImagePreviewImg');
+  previewImg.src = imageUrl;
+  previewImg.onerror = () => {
+    toast.error('Khong the tai anh tu duong dan nay');
+    previewImg.style.display = 'none';
+  };
+  previewImg.onload = () => {
+    previewImg.style.display = 'block';
+  };
+}
 
 function toExcelNumber(value, fractionDigits = 0) {
   const num = Number(value);
@@ -1217,10 +1408,16 @@ function exportLowStockCsv() {
       toExcelNumber(variantCount)
     ].join(delimiter);
   });
-
-  // BOM + sep header giup Excel mo UTF-8 tieng Viet va tach cot dung theo locale.
-  const csvContent = `\uFEFFsep=${delimiter}\r\n${header.map(toCsvText).join(delimiter)}\r\n${rows.join('\r\n')}`;
-  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const headerLine = header.map(toCsvText).join(delimiter);
+  const csvContent = `${headerLine}\r\n${rows.join('\r\n')}`;
+  const encoder = new TextEncoder();
+  const uint8array = encoder.encode(csvContent);
+  const utf8BOM = new Uint8Array([0xEF, 0xBB, 0xBF]); // UTF-8 BOM
+  const uint8arrayWithBOM = new Uint8Array(utf8BOM.length + uint8array.length);
+  uint8arrayWithBOM.set(utf8BOM, 0);
+  uint8arrayWithBOM.set(uint8array, utf8BOM.length);
+  
+  const blob = new Blob([uint8arrayWithBOM], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   const timestamp = new Date().toISOString().slice(0, 10);
@@ -1231,20 +1428,134 @@ function exportLowStockCsv() {
   document.body.removeChild(link);
   URL.revokeObjectURL(url);
 
-  toast.success(`Đã xuất ${lowStock.length} sản phẩm tồn kho thấp (định dạng Excel)`);
+  toast.success(`Đã xuất ${lowStock.length} sản phẩm tồn kho thấp (định dạng CSV UTF-8)`);
+}
+
+async function exportRevenueExcel() {
+  const revenueRows = adminState.stats?.revenueSeries || adminState.stats?.last7Days || [];
+  
+  if (!revenueRows || revenueRows.length === 0) {
+    toast.info('Khong co du lieu doanh thu de xuat');
+    return;
+  }
+
+  try {
+    loading.show();
+    const token = localStorage.getItem('token');
+    let costData = {};
+    
+    try {
+      const costResponse = await fetch(`${API_BASE_URL}/admin/statistics/costs`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (costResponse.ok) {
+        const costJson = await costResponse.json();
+        if (costJson.success && costJson.data) {
+          costData = costJson.data;
+        }
+      }
+    } catch (error) {
+      console.warn('Khong the tai du lieu chi phi:', error);
+    }
+
+    const delimiter = ';';
+    const revenueView = adminState.revenueView || 'day';
+    const header = ['Kỳ', 'Doanh thu', 'Chi phí', 'Lãi lỗ', '% Lãi'];
+    const rows = revenueRows.map((row) => {
+      const periodLabel = formatRevenuePeriodLabel(row, revenueView);
+      const revenue = Number(row.Revenue) || 0;
+      let costs = 0;
+      const periodKey = String(row.SortDate || row.Date || row.date || '').trim();
+      
+      if (costData[periodKey]) {
+        costs = Number(costData[periodKey]) || 0;
+      } else {
+        costs = Math.round(revenue * 0.30);
+      }
+      
+      const profit = revenue - costs;
+      const profitMargin = revenue > 0 ? ((profit / revenue) * 100).toFixed(2) : 0;
+      
+      return [
+        `"${periodLabel}"`,
+        toExcelNumber(revenue),
+        toExcelNumber(costs),
+        toExcelNumber(profit),
+        `${profitMargin}%`
+      ].join(delimiter);
+    });
+    const totalRevenue = revenueRows.reduce((sum, row) => sum + (Number(row.Revenue) || 0), 0);
+    const totalCosts = revenueRows.reduce((sum, row, index) => {
+      const periodKey = String(row.SortDate || row.Date || row.date || '').trim();
+      const cost = costData[periodKey] ? Number(costData[periodKey]) : Math.round((Number(row.Revenue) || 0) * 0.30);
+      return sum + cost;
+    }, 0);
+    const totalProfit = totalRevenue - totalCosts;
+    const totalMargin = totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(2) : 0;
+
+    rows.push(''); // Dòng trống
+    rows.push([
+      '"TỔNG CỘNG"',
+      toExcelNumber(totalRevenue),
+      toExcelNumber(totalCosts),
+      toExcelNumber(totalProfit),
+      `${totalMargin}%`
+    ].join(delimiter));
+    const headerLine = header.map(val => `"${val}"`).join(delimiter);
+    const csvContent = `${headerLine}\r\n${rows.join('\r\n')}`;
+    const encoder = new TextEncoder();
+    const uint8array = encoder.encode(csvContent);
+    const utf8BOM = new Uint8Array([0xEF, 0xBB, 0xBF]);
+    const uint8arrayWithBOM = new Uint8Array(utf8BOM.length + uint8array.length);
+    uint8arrayWithBOM.set(utf8BOM, 0);
+    uint8arrayWithBOM.set(uint8array, utf8BOM.length);
+    
+    const blob = new Blob([uint8arrayWithBOM], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const timestamp = new Date().toISOString().slice(0, 10);
+    const filename = revenueView === 'day' 
+      ? `doanh-thu-${timestamp}.csv`
+      : revenueView === 'month'
+      ? `doanh-thu-thang-${timestamp}.csv`
+      : `doanh-thu-quy-${timestamp}.csv`;
+    
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+
+    toast.success(`Đã xuất báo cáo doanh thu - lãi lỗ (${revenueRows.length} kỳ)`);
+  } catch (error) {
+    console.error('Export revenue error:', error);
+    toast.error('Lỗi khi xuất báo cáo doanh thu');
+  } finally {
+    loading.hide();
+  }
 }
 
 async function refreshAllData() {
   try {
     loading.show();
-    await Promise.all([
+    const results = await Promise.allSettled([
       loadOverview(),
+      loadAiInsights(),
       loadOrders(),
       loadCategories(),
       loadProducts(),
       loadUsers()
     ]);
-    toast.success('Da lam moi du lieu');
+
+    const failed = results.filter((item) => item.status === 'rejected');
+    if (!failed.length) {
+      toast.success('Da lam moi du lieu');
+    } else {
+      const firstMessage = failed[0]?.reason?.message || 'Mot so du lieu khong tai duoc';
+      toast.warning(`${failed.length} module tai loi. ${firstMessage}`);
+    }
   } catch (error) {
     toast.error(error.message);
   } finally {
@@ -1262,12 +1573,42 @@ document.addEventListener('DOMContentLoaded', async () => {
   setupAdminKeyboardShortcuts();
 
   document.getElementById('refreshAllBtn').addEventListener('click', refreshAllData);
+  document.getElementById('reloadAiInsightsBtn')?.addEventListener('click', async () => {
+    try {
+      loading.show();
+      await loadAiInsights();
+      toast.success('Da cap nhat AI goi y kinh doanh');
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      loading.hide();
+    }
+  });
   document.getElementById('exportLowStockBtn').addEventListener('click', exportLowStockCsv);
+  document.getElementById('exportRevenueBtn').addEventListener('click', exportRevenueExcel);
   document.getElementById('revenueViewFilter').addEventListener('change', loadOverview);
   document.getElementById('orderStatusFilter').addEventListener('change', renderOrdersTable);
   document.getElementById('productSearchInput').addEventListener('input', renderProductsTable);
   document.getElementById('addProductBtn').addEventListener('click', openAddProduct);
   document.getElementById('saveProductBtn').addEventListener('click', saveProduct);
+  const uploadProductImageBtn = document.getElementById('uploadProductImageBtn');
+  const productImageFileInput = document.getElementById('productImageFileInput');
+  const previewProductImageBtn = document.getElementById('previewProductImageBtn');
+  
+  if (uploadProductImageBtn) {
+    uploadProductImageBtn.addEventListener('click', () => {
+      productImageFileInput.click();
+    });
+  }
+  
+  if (productImageFileInput) {
+    productImageFileInput.addEventListener('change', handleProductImageSelect);
+  }
+  
+  if (previewProductImageBtn) {
+    previewProductImageBtn.addEventListener('click', previewProductImage);
+  }
+  
   document.getElementById('addVariantRowBtn').addEventListener('click', () => addVariantRow());
   document.getElementById('variantTableBody').addEventListener('click', (event) => {
     const removeButton = event.target.closest('.remove-variant-btn');

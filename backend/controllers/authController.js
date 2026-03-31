@@ -272,7 +272,9 @@ const getProfile = async (req, res) => {
         phone: user.Phone,
         address: user.Address,
         isAdmin: user.IsAdmin,
-        createdAt: user.CreatedAt
+        createdAt: user.CreatedAt,
+        avatar_url: user.ProfileImage || null,
+        profileImage: user.ProfileImage || null
       }
     });
   } catch (error) {
@@ -690,6 +692,42 @@ const logout = async (req, res) => {
   }
 };
 
+/**
+ * Upload avatar
+ * POST /api/auth/upload-avatar
+ */
+const uploadAvatar = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Vui lòng chọn file ảnh'
+      });
+    }
+
+    const userId = req.user.UserId;
+    const avatarUrl = `/uploads/images/${req.file.filename}`;
+
+    // Lưu vào database
+    await UserModel.updateProfileImage(userId, avatarUrl);
+
+    res.json({
+      success: true,
+      message: 'Cập nhật ảnh đại diện thành công',
+      data: {
+        avatar_url: avatarUrl,
+        avatarUrl: avatarUrl
+      }
+    });
+  } catch (error) {
+    console.error('Upload avatar error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Lỗi khi tải avatar: ' + error.message
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -699,5 +737,6 @@ module.exports = {
   forgotPassword,
   resetPassword,
   getResetPasswordPage,
-  logout
+  logout,
+  uploadAvatar
 };

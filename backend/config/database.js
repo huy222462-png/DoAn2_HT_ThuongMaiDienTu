@@ -35,7 +35,7 @@ const authSegment = useSqlAuth
   ? `Uid=${dbUser};Pwd=${dbPassword};`
   : 'Trusted_Connection=yes;';
 
-// Cấu hình kết nối database với msnodesqlv8
+
 const config = {
   connectionString: `Driver={ODBC Driver 17 for SQL Server};Server=${serverAddress};Database=${dbName};${authSegment}TrustServerCertificate=yes;`,
   connectionTimeout: parseInt(process.env.DB_CONNECT_TIMEOUT_MS || '15000', 10),

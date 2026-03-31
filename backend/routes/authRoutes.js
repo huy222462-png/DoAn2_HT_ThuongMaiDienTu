@@ -8,6 +8,7 @@ const router = express.Router();
 const authController = require('../controllers/authController');
 const { authenticate } = require('../middleware/auth');
 const { loginLimiter } = require('../middleware/security');
+const upload = require('../middleware/upload');
 const {
 	registerValidation,
 	loginValidation,
@@ -101,5 +102,12 @@ router.put('/change-password', authenticate, authController.changePassword);
  * @access  Private
  */
 router.post('/logout', authenticate, authController.logout);
+
+/**
+ * @route   POST /api/auth/upload-avatar
+ * @desc    Upload ảnh đại diện
+ * @access  Private
+ */
+router.post('/upload-avatar', authenticate, upload.single('avatar'), authController.uploadAvatar);
 
 module.exports = router;

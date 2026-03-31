@@ -1,7 +1,3 @@
-/**
- * Chat Controller
- * MVP chatbot cho website TMĐT: FAQ + tìm sản phẩm + AI fallback
- */
 
 const ProductModel = require('../models/ProductModel');
 const CategoryModel = require('../models/CategoryModel');
@@ -68,13 +64,28 @@ const toVndNumber = (textNumber) => {
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return null;
   }
-
-  // Người dùng thường nhập "10" để ám chỉ 10 triệu
+    // Users often type "10" meaning 10 million VND in chat context.
   if (parsed < 1000) {
     return parsed * 1000000;
   }
 
   return parsed;
+};
+
+const isLikelyPriceOnlyQuery = (normalizedMessage) => {
+  if (!normalizedMessage) {
+    return false;
+  }
+
+  const hasPriceUnit = /\b(\d+[\d\.,]*\s*(tr|trieu|k|nghin|ngan))\b/i.test(normalizedMessage);
+  const hasPriceContext = containsAny(normalizedMessage, ['gia', 'tam gia', 'khoang', 'duoi', 'tren', 'tu', 'den']);
+  const nonPriceText = normalizedMessage
+    .replace(/\d+[\d\.,]*/g, ' ')
+    .replace(/\b(tr|trieu|k|nghin|ngan|gia|tam|khoang|duoi|tren|tu|den|san|pham|goi|y|tim|mua)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  return (hasPriceUnit || hasPriceContext) && nonPriceText.length === 0;
 };
 
 const findFaqAnswer = (message) => {
@@ -183,6 +194,9 @@ const findProductsFromMessage = async (message) => {
   if (!containsAny(normalized, triggerWords)) {
     return null;
   }
+  if (isLikelyPriceOnlyQuery(normalized)) {
+    return null;
+  }
 
   const keyword = normalized
     .replace(/tim|goi y|san pham|mua|giup|cho|minh|em|anh|voi|phone|smartphone/g, ' ')
@@ -287,12 +301,37 @@ const findPriceRangeFromMessage = (message) => {
     }
   }
 
+  const aroundMatch = normalized.match(/(?:khoang|tam|muc|gia)\s*(\d+[\d\.,]*)\s*(tr|trieu|k|nghin|ngan)?/i);
+  if (aroundMatch) {
+    let value = toVndNumber(aroundMatch[1]);
+    if (aroundMatch[2] && /k|nghin|ngan/i.test(aroundMatch[2])) {
+      value = Number(String(aroundMatch[1]).replace(/[,\.\s]/g, '')) * 1000;
+    }
+
+    if (value) {
+      const delta = Math.max(500000, Math.round(value * 0.2));
+      return { minPrice: Math.max(0, value - delta), maxPrice: value + delta };
+    }
+  }
+  const exactValueMatch = normalized.match(/\b(\d+[\d\.,]*)\s*(tr|trieu|k|nghin|ngan)\b/i);
+  if (exactValueMatch) {
+    let value = toVndNumber(exactValueMatch[1]);
+    if (exactValueMatch[2] && /k|nghin|ngan/i.test(exactValueMatch[2])) {
+      value = Number(String(exactValueMatch[1]).replace(/[,\.\s]/g, '')) * 1000;
+    }
+
+    if (value) {
+      const delta = Math.max(500000, Math.round(value * 0.2));
+      return { minPrice: Math.max(0, value - delta), maxPrice: value + delta };
+    }
+  }
+
   return null;
 };
 
 const findProductsByPriceRange = async (message) => {
   const normalized = normalizeText(message);
-  if (!containsAny(normalized, ['gia', 'trieu', 'k', 'nghin', 'ngan', 'duoi', 'tren', 'tu'])) {
+  if (!containsAny(normalized, ['gia', 'trieu', 'k', 'nghin', 'ngan', 'duoi', 'tren', 'tu', 'den', 'khoang', 'tam'])) {
     return null;
   }
 
@@ -301,7 +340,7 @@ const findProductsByPriceRange = async (message) => {
     return null;
   }
 
-  const poolData = await ProductModel.getAll({ page: 1, limit: 100 });
+  const poolData = await ProductModel.getAll({ page: 1, limit: 500 });
   const products = Array.isArray(poolData?.products) ? poolData.products : [];
 
   const filtered = products.filter((p) => {
@@ -321,14 +360,28 @@ const findProductsByPriceRange = async (message) => {
     return `Hiện mình chưa thấy sản phẩm dưới ${formatCurrency(range.maxPrice)}.`;
   }
 
-  const lines = filtered.slice(0, 5).map((p, index) => {
+  const ranked = filtered
+    .map((p) => {
+      const price = Number(p.price ?? p.Price ?? 0);
+      const center = range.minPrice && range.maxPrice
+        ? (range.minPrice + range.maxPrice) / 2
+        : (range.maxPrice || range.minPrice || price);
+      return {
+        p,
+        distance: Math.abs(price - center)
+      };
+    })
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, 7);
+
+  const lines = ranked.map(({ p }, index) => {
     const name = p.product_name || p.ProductName || 'Sản phẩm';
     const price = Number(p.price ?? p.Price ?? 0);
     const stock = Number(p.stock_quantity ?? p.Stock ?? 0);
     return `${index + 1}. ${name} - ${formatCurrency(price)} (còn ${stock})`;
   });
 
-  return `Mình tìm được ${filtered.length} sản phẩm theo khoảng giá bạn cần:\n${lines.join('\n')}\n\nBạn muốn lọc tiếp theo thương hiệu hoặc nhu cầu sử dụng không?`;
+  return `Mình tìm được ${filtered.length} sản phẩm theo khoảng giá bạn cần:\n${lines.join('\n')}\n\nBạn muốn mình lọc thêm theo danh mục (laptop, PC, màn hình...) để sát nhu cầu hơn không?`;
 };
 
 const buildCatalogContext = async (message) => {
@@ -497,8 +550,6 @@ const askChatbot = async (req, res) => {
     }
 
     const cleanMessage = message.trim().slice(0, 1200);
-
-    // Ưu tiên trả lời local để nhanh và tiết kiệm chi phí
     const faqAnswer = findFaqAnswer(cleanMessage);
     if (faqAnswer) {
       return res.json({
@@ -506,6 +557,17 @@ const askChatbot = async (req, res) => {
         data: {
           answer: faqAnswer,
           source: 'faq'
+        }
+      });
+    }
+
+    const priceAnswer = await findProductsByPriceRange(cleanMessage);
+    if (priceAnswer) {
+      return res.json({
+        success: true,
+        data: {
+          answer: priceAnswer,
+          source: 'price-filter'
         }
       });
     }
@@ -539,17 +601,6 @@ const askChatbot = async (req, res) => {
         data: {
           answer: categoryAnswer,
           source: 'category'
-        }
-      });
-    }
-
-    const priceAnswer = await findProductsByPriceRange(cleanMessage);
-    if (priceAnswer) {
-      return res.json({
-        success: true,
-        data: {
-          answer: priceAnswer,
-          source: 'price-filter'
         }
       });
     }

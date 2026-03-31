@@ -488,17 +488,22 @@ CORS policy: No 'Access-Control-Allow-Origin' header
 - Kiểm tra `FRONTEND_URL` trong `.env`
 - Đảm bảo CORS middleware được cấu hình đúng
 
-## LIÊN HỆ HỖ TRỢ
+
 
 Nếu gặp vấn đề, vui lòng:
 1. Kiểm tra logs trong thư mục `backend/logs/`
 2. Kiểm tra console của browser (F12)
 3. Đọc lại hướng dẫn cài đặt
 
-## LICENSE
+
 
 Đồ án đại học - Chỉ sử dụng cho mục đích học tập
 
 ---
 
-**Chúc bạn thành công với đồ án!** 🎉
+hướng dẫn các luồng
+khi người dùng click vào chức năng của web thì frontend sẽ gửi 1 yêu cầu về backend thông qua API để backend nó biết là chức năng gì đang được yêu cầu và nó sẽ trả về chức năng đó cho frontend dùng.
+
+đồ án này chạy bằng biến môi trường sql
+tuy sql có nhiều bảng nhưng chúng đã được giũ lại và nâng cấp theo hệ thống bởi vậy nên nó mới có những bảng không có dữ liệu
+

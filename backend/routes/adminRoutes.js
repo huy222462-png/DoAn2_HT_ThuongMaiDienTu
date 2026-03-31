@@ -78,4 +78,7 @@ router.put('/users/:id/toggle-lock', idValidation, adminController.toggleUserLoc
 // Lấy thống kê
 router.get('/statistics', adminController.getStatistics);
 
+// AI phan tich doanh thu, loi nhuan, san pham ban cham
+router.get('/ai-insights', adminController.getAiBusinessInsights);
+
 module.exports = router;

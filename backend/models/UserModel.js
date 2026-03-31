@@ -1,23 +1,12 @@
-/**
- * User Model
- * Model để thao tác với bảng Users
- */
 
 const { sql, getPool } = require('../config/database');
 const bcrypt = require('bcrypt');
 
 class UserModel {
-  /**
-   * Tạo user mới
-   * @param {Object} userData - Dữ liệu user
-   * @returns {Promise<Object>}
-   */
-  static async create(userData) {
+    static async create(userData) {
     try {
       const pool = getPool();
       const { username, email, password, fullName, phone, address } = userData;
-      
-      // Hash password
       const hashedPassword = await bcrypt.hash(password, 10);
       
       const result = await pool.request()
@@ -39,12 +28,7 @@ class UserModel {
     }
   }
   
-  /**
-   * Tìm user theo email
-   * @param {string} email
-   * @returns {Promise<Object>}
-   */
-  static async findByEmail(email) {
+    static async findByEmail(email) {
     try {
       const pool = getPool();
       const result = await pool.request()
@@ -57,12 +41,7 @@ class UserModel {
     }
   }
 
-  /**
-   * Tìm user theo số điện thoại
-   * @param {string} phone
-   * @returns {Promise<Object>}
-   */
-  static async findByPhone(phone) {
+    static async findByPhone(phone) {
     try {
       const pool = getPool();
       const normalizedPhone = String(phone || '').replace(/\D/g, '');
@@ -76,13 +55,7 @@ class UserModel {
     }
   }
 
-  /**
-   * Tìm user bằng định danh đăng nhập (email hoặc số điện thoại)
-   * @param {string} identifier
-   * @param {string} loginMethod
-   * @returns {Promise<Object>}
-   */
-  static async findByLoginIdentifier(identifier, loginMethod = 'auto') {
+    static async findByLoginIdentifier(identifier, loginMethod = 'auto') {
     const normalizedIdentifier = String(identifier || '').trim();
     if (!normalizedIdentifier) {
       return null;
@@ -111,12 +84,7 @@ class UserModel {
     return this.findByEmail(normalizedIdentifier.toLowerCase());
   }
   
-  /**
-   * Tìm user theo username
-   * @param {string} username
-   * @returns {Promise<Object>}
-   */
-  static async findByUsername(username) {
+    static async findByUsername(username) {
     try {
       const pool = getPool();
       const result = await pool.request()
@@ -129,30 +97,33 @@ class UserModel {
     }
   }
   
-  /**
-   * Tìm user theo ID
-   * @param {number} userId
-   * @returns {Promise<Object>}
-   */
-  static async findById(userId) {
+    static async findById(userId) {
     try {
       const pool = getPool();
-      const result = await pool.request()
-        .input('userId', sql.Int, userId)
-        .query('SELECT UserId, Username, Email, FullName, Phone, Address, IsAdmin, IsLocked, CreatedAt FROM Users WHERE UserId = @userId');
-      
-      return result.recordset[0];
+      try {
+        const result = await pool.request()
+          .input('userId', sql.Int, userId)
+          .query('SELECT UserId, Username, Email, FullName, Phone, Address, IsAdmin, IsLocked, CreatedAt, ProfileImage FROM Users WHERE UserId = @userId');
+
+        return result.recordset[0];
+      } catch (error) {
+        // Keep auth working on older databases that do not have ProfileImage yet.
+        if (!String(error.message || '').includes('ProfileImage')) {
+          throw error;
+        }
+
+        const fallbackResult = await pool.request()
+          .input('userId', sql.Int, userId)
+          .query('SELECT UserId, Username, Email, FullName, Phone, Address, IsAdmin, IsLocked, CreatedAt, NULL AS ProfileImage FROM Users WHERE UserId = @userId');
+
+        return fallbackResult.recordset[0];
+      }
     } catch (error) {
       throw error;
     }
   }
 
-  /**
-   * Tìm user theo ID kèm password hash
-   * @param {number} userId
-   * @returns {Promise<Object>}
-   */
-  static async findByIdWithPassword(userId) {
+    static async findByIdWithPassword(userId) {
     try {
       const pool = getPool();
       const result = await pool.request()
@@ -165,22 +136,11 @@ class UserModel {
     }
   }
   
-  /**
-   * So sánh password
-   * @param {string} candidatePassword
-   * @param {string} hashedPassword
-   * @returns {Promise<boolean>}
-   */
-  static async comparePassword(candidatePassword, hashedPassword) {
+    static async comparePassword(candidatePassword, hashedPassword) {
     return await bcrypt.compare(candidatePassword, hashedPassword);
   }
   
-  /**
-   * Tăng số lần đăng nhập sai
-   * @param {number} userId
-   * @returns {Promise}
-   */
-  static async incrementLoginAttempts(userId) {
+    static async incrementLoginAttempts(userId) {
     try {
       const pool = getPool();
       await pool.request()
@@ -203,12 +163,7 @@ class UserModel {
     }
   }
   
-  /**
-   * Reset số lần đăng nhập sai
-   * @param {number} userId
-   * @returns {Promise}
-   */
-  static async resetLoginAttempts(userId) {
+    static async resetLoginAttempts(userId) {
     try {
       const pool = getPool();
       await pool.request()
@@ -219,11 +174,7 @@ class UserModel {
     }
   }
   
-  /**
-   * Lấy tất cả users (cho admin)
-   * @returns {Promise<Array>}
-   */
-  static async getAll() {
+    static async getAll() {
     try {
       const pool = getPool();
       const result = await pool.request()
@@ -235,11 +186,7 @@ class UserModel {
     }
   }
 
-  /**
-   * Lấy danh sách người nhận email marketing
-   * @returns {Promise<Array>}
-   */
-  static async getMarketingRecipients() {
+    static async getMarketingRecipients() {
     try {
       const pool = getPool();
       const result = await pool.request().query(`
@@ -257,13 +204,7 @@ class UserModel {
     }
   }
   
-  /**
-   * Cập nhật user
-   * @param {number} userId
-   * @param {Object} updateData
-   * @returns {Promise<Object>}
-   */
-  static async update(userId, updateData) {
+    static async update(userId, updateData) {
     try {
       const pool = getPool();
       const { fullName, phone, address } = updateData;
@@ -286,13 +227,7 @@ class UserModel {
     }
   }
 
-  /**
-   * Cập nhật mật khẩu
-   * @param {number} userId
-   * @param {string} newPassword
-   * @returns {Promise}
-   */
-  static async updatePassword(userId, newPassword) {
+    static async updatePassword(userId, newPassword) {
     try {
       const pool = getPool();
       const hashedPassword = await bcrypt.hash(newPassword, 10);
@@ -305,14 +240,21 @@ class UserModel {
       throw error;
     }
   }
+
+    static async updateProfileImage(userId, profileImage) {
+    try {
+      const pool = getPool();
+
+      await pool.request()
+        .input('userId', sql.Int, userId)
+        .input('profileImage', sql.NVarChar(500), profileImage)
+        .query('UPDATE Users SET ProfileImage = @profileImage WHERE UserId = @userId');
+    } catch (error) {
+      throw error;
+    }
+  }
   
-  /**
-   * Khóa/Mở khóa user (cho admin)
-   * @param {number} userId
-   * @param {boolean} isLocked
-   * @returns {Promise}
-   */
-  static async toggleLock(userId, isLocked) {
+    static async toggleLock(userId, isLocked) {
     try {
       const pool = getPool();
       await pool.request()

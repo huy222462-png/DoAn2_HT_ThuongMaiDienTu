@@ -19,6 +19,135 @@ let quickViewState = {
   selectedVariantId: null
 };
 
+function formatBudgetInput(value) {
+  const numeric = String(value || '').replace(/[^\d]/g, '');
+  if (!numeric) {
+    return '';
+  }
+
+  return Number(numeric).toLocaleString('vi-VN');
+}
+
+function parseBudgetInput(value) {
+  const numeric = Number(String(value || '').replace(/[^\d]/g, ''));
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+function getPurposeLabel(purpose) {
+  switch (purpose) {
+    case 'gaming':
+      return 'Choi game';
+    case 'design':
+      return 'Do hoa / sang tao noi dung';
+    default:
+      return 'Lam viec van phong';
+  }
+}
+
+function renderAiRecommendation(data) {
+  const container = document.getElementById('aiBuildResult');
+  if (!container) {
+    return;
+  }
+
+  const items = Array.isArray(data.items) ? data.items : [];
+  const tips = Array.isArray(data.tips) ? data.tips : [];
+  const missing = Array.isArray(data.missingComponents) ? data.missingComponents : [];
+  const budgetText = data.budget ? formatPrice(data.budget) : 'Khong gioi han ngan sach';
+
+  container.style.display = 'block';
+
+  if (!items.length) {
+    container.innerHTML = `
+      <div class="alert alert-warning mb-0">
+        Khong tim duoc bo cau hinh phu hop tu du lieu san pham hien tai. Ban thu doi nhu cau hoac cap nhat danh muc san pham nhe.
+      </div>
+    `;
+    return;
+  }
+
+  container.innerHTML = `
+    <div class="ai-build-summary mb-3">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <h5 class="mb-0"><i class="fas fa-check-circle me-2 text-success"></i>Goi y AI: ${data.profile?.label || getPurposeLabel(data.profile?.key)}</h5>
+        <span class="badge bg-light text-dark border">Do phu linh kien: ${data.coverage || 0}%</span>
+      </div>
+      <div class="small text-muted mt-2">Ngan sach: ${budgetText} | Tong tam tinh: ${formatPrice(data.totalEstimated || 0)}</div>
+    </div>
+
+    <div class="row g-3 mb-3">
+      ${items.map((entry) => {
+        const p = entry.product || {};
+        return `
+          <div class="col-md-6 col-xl-4">
+            <article class="ai-build-item h-100">
+              <div class="ai-build-item-header">
+                <span class="badge bg-primary-subtle text-primary-emphasis">${entry.group_label || 'Linh kien'}</span>
+                <small class="text-muted">Do tin cay: ${entry.confidence || 0}%</small>
+              </div>
+              <div class="mt-2 mb-2 fw-semibold">${p.product_name || 'San pham'}</div>
+              <div class="small text-muted mb-2">${entry.reason || 'Goi y theo nhu cau su dung'}</div>
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="text-primary fw-bold">${formatPrice(p.price || 0)}</span>
+                <button class="btn btn-sm btn-outline-primary" onclick="addToCart(${Number(p.product_id) || 0})" ${Number(p.product_id) > 0 ? '' : 'disabled'}>
+                  <i class="fas fa-cart-plus me-1"></i>Them vao gio
+                </button>
+              </div>
+            </article>
+          </div>
+        `;
+      }).join('')}
+    </div>
+
+    ${missing.length ? `
+      <div class="alert alert-info py-2">
+        <strong>Con thieu:</strong> ${missing.join(', ')}
+      </div>
+    ` : ''}
+
+    ${tips.length ? `
+      <div class="ai-build-tips">
+        ${tips.map((tip) => `<div class="small text-muted">- ${tip}</div>`).join('')}
+      </div>
+    ` : ''}
+  `;
+}
+
+async function handleAiBuildSubmit(event) {
+  event.preventDefault();
+
+  const purposeElement = document.getElementById('aiPurpose');
+  const budgetElement = document.getElementById('aiBudget');
+  const submitButton = document.getElementById('aiBuildSubmitBtn');
+
+  const purpose = purposeElement?.value || 'office';
+  const budget = parseBudgetInput(budgetElement?.value || '');
+
+  const query = new URLSearchParams({ purpose });
+  if (budget) {
+    query.set('budget', String(budget));
+  }
+
+  try {
+    submitButton.disabled = true;
+    submitButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Dang phan tich...';
+
+    const response = await fetch(`${API_BASE_URL}/products/recommend-build?${query.toString()}`);
+    const data = await response.json();
+
+    if (!response.ok || !data.success) {
+      throw new Error(data.message || 'Khong the goi y cau hinh');
+    }
+
+    renderAiRecommendation(data.data || {});
+  } catch (error) {
+    toast.error(error.message || 'Khong the goi y cau hinh');
+  } finally {
+    submitButton.disabled = false;
+    submitButton.innerHTML = '<i class="fas fa-wand-magic-sparkles me-2"></i>Gợi ý cấu hình';
+  }
+}
+
 function renderProductPrice(product) {
   const finalPrice = Number(product.price || 0);
   const basePrice = Number(product.base_price ?? product.price ?? 0);
@@ -72,6 +201,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // Load more button
     document.getElementById('loadMoreBtn')?.addEventListener('click', loadMoreProducts);
+
+    document.getElementById('aiBuildForm')?.addEventListener('submit', handleAiBuildSubmit);
+    document.getElementById('aiBudget')?.addEventListener('input', (event) => {
+      event.target.value = formatBudgetInput(event.target.value);
+    });
 
     const quickViewModalElement = document.getElementById('quickViewModal');
     if (quickViewModalElement && window.bootstrap?.Modal) {

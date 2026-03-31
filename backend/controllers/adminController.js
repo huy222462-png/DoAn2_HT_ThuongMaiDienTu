@@ -1,7 +1,3 @@
-/**
- * Admin Controller
- * Controller xử lý các chức năng admin
- */
 
 const ProductModel = require('../models/ProductModel');
 const CategoryModel = require('../models/CategoryModel');
@@ -92,17 +88,51 @@ const hardenImageByPublicPath = async (publicPath) => {
   });
 };
 
-/**
- * QUẢN LÝ SẢN PHẨM
- */
+const normalizeInsightText = (value) => String(value || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/g, 'd')
+  .trim();
 
-// Tạo sản phẩm mới
+const toSafeNumber = (value) => {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const estimateCostRateByCategory = (categoryName = '') => {
+  const text = normalizeInsightText(categoryName);
+  if (!text) {
+    return 0.76;
+  }
+
+  if (/(cpu|vga|gpu|card|man hinh|monitor|laptop)/.test(text)) return 0.84;
+  if (/(ram|ssd|o cung|main|mainboard|motherboard|nguon|psu|case)/.test(text)) return 0.8;
+  if (/(chuot|ban phim|tai nghe|phu kien|loa|webcam)/.test(text)) return 0.68;
+  return 0.76;
+};
+
+const computeRecommendedDiscount = (sold30, sold90, stock, lastSoldAt) => {
+  const sold30Safe = toSafeNumber(sold30);
+  const sold90Safe = toSafeNumber(sold90);
+  const stockSafe = Math.max(0, toSafeNumber(stock));
+  const noRecentSales = sold30Safe === 0;
+  const staleDays = lastSoldAt ? Math.floor((Date.now() - new Date(lastSoldAt).getTime()) / 86400000) : null;
+
+  if (stockSafe <= 0) return 0;
+  if (sold30Safe <= 1 && sold90Safe <= 2) {
+    if (staleDays !== null && staleDays >= 90) return 22;
+    if (staleDays !== null && staleDays >= 45) return 16;
+    return 12;
+  }
+
+  if (noRecentSales && stockSafe >= 10) return 10;
+  return 0;
+};
 const createProduct = async (req, res) => {
   try {
     const productData = req.body;
     let imageUrl = null;
-
-    // Nếu upload file ảnh
     if (req.file) {
       imageUrl = `/uploads/images/${req.file.filename}`;
       try {
@@ -115,19 +145,16 @@ const createProduct = async (req, res) => {
         });
       }
     } 
-    // Nếu gửi URL ảnh từ internet, download và lưu
     else if (productData.imageUrl && productData.imageUrl.startsWith('http')) {
       try {
         imageUrl = await downloadAndSaveImage(productData.imageUrl);
         await hardenImageByPublicPath(imageUrl);
       } catch (error) {
-        // Fallback: cho phép dùng trực tiếp URL ngoài để tránh chặn thao tác tạo/copy sản phẩm.
         deleteImage(imageUrl);
         console.warn('Download image failed, fallback to remote URL:', error.message);
         imageUrl = productData.imageUrl;
       }
     }
-    // Nếu gửi đường dẫn ảnh local trên máy chủ, copy vào uploads
     else if (productData.imageUrl && isLocalDiskPath(productData.imageUrl)) {
       try {
         imageUrl = copyLocalImageToUploads(productData.imageUrl);
@@ -140,12 +167,9 @@ const createProduct = async (req, res) => {
         });
       }
     }
-    // Nếu gửi URL ảnh từ server
     else if (productData.imageUrl) {
       imageUrl = productData.imageUrl;
     }
-
-    // Gán ảnh vào productData
     productData.imageUrl = imageUrl;
 
     const product = await ProductModel.create(productData);
@@ -156,7 +180,6 @@ const createProduct = async (req, res) => {
       data: product
     });
   } catch (error) {
-    // Nếu lỗi, xóa file ảnh nếu có
     if (req.file) {
       deleteImage(req.file.filename);
     }
@@ -167,8 +190,6 @@ const createProduct = async (req, res) => {
     });
   }
 };
-
-// Upload ảnh dùng chung (phục vụ ảnh biến thể hoặc ảnh sản phẩm)
 const uploadProductImage = async (req, res) => {
   try {
     if (!req.file) {
@@ -207,19 +228,13 @@ const uploadProductImage = async (req, res) => {
     });
   }
 };
-
-// Cập nhật sản phẩm
 const updateProduct = async (req, res) => {
   try {
     const productId = parseInt(req.params.id);
     const productData = req.body;
     let imageUrl = null;
-
-    // Lấy ảnh cũ để có thể xóa nếu cần
     const oldProduct = await ProductModel.findById(productId);
     const oldImageUrl = oldProduct?.image_url;
-
-    // Nếu upload file ảnh mới
     if (req.file) {
       imageUrl = `/uploads/images/${req.file.filename}`;
       try {
@@ -231,22 +246,18 @@ const updateProduct = async (req, res) => {
           message: 'Ảnh upload không hợp lệ: ' + error.message
         });
       }
-      // Xóa ảnh cũ nếu có
       if (oldImageUrl) {
         deleteImage(oldImageUrl);
       }
     } 
-    // Nếu gửi URL ảnh từ internet, download và lưu
     else if (productData.imageUrl && productData.imageUrl.startsWith('http')) {
       try {
         imageUrl = await downloadAndSaveImage(productData.imageUrl);
         await hardenImageByPublicPath(imageUrl);
-        // Xóa ảnh cũ nếu có
         if (oldImageUrl) {
           deleteImage(oldImageUrl);
         }
       } catch (error) {
-        // Fallback: giữ URL ngoài để cập nhật vẫn thành công ngay cả khi không tải được ảnh về server.
         deleteImage(imageUrl);
         console.warn('Download image failed, fallback to remote URL:', error.message);
         imageUrl = productData.imageUrl;
@@ -255,7 +266,6 @@ const updateProduct = async (req, res) => {
         }
       }
     }
-    // Nếu gửi đường dẫn ảnh local trên máy chủ, copy vào uploads
     else if (productData.imageUrl && isLocalDiskPath(productData.imageUrl)) {
       try {
         imageUrl = copyLocalImageToUploads(productData.imageUrl);
@@ -271,20 +281,15 @@ const updateProduct = async (req, res) => {
         });
       }
     }
-    // Nếu gửi URL ảnh từ server
     else if (productData.imageUrl) {
       imageUrl = productData.imageUrl;
-      // Xóa ảnh cũ nếu có và ảnh mới khác ảnh cũ
       if (oldImageUrl && oldImageUrl !== imageUrl) {
         deleteImage(oldImageUrl);
       }
     }
-    // Nếu không gửi imageUrl, giữ ảnh cũ
     else if (oldImageUrl) {
       imageUrl = oldImageUrl;
     }
-
-    // Gán ảnh vào productData
     if (imageUrl) {
       productData.imageUrl = imageUrl;
     }
@@ -304,7 +309,6 @@ const updateProduct = async (req, res) => {
       data: product
     });
   } catch (error) {
-    // Nếu lỗi, xóa file ảnh nếu có
     if (req.file) {
       deleteImage(req.file.filename);
     }
@@ -315,18 +319,12 @@ const updateProduct = async (req, res) => {
     });
   }
 };
-
-// Xóa sản phẩm
 const deleteProduct = async (req, res) => {
   try {
     const productId = parseInt(req.params.id);
-    
-    // Lấy ảnh để xóa
     const product = await ProductModel.findById(productId);
     
     await ProductModel.delete(productId);
-    
-    // Xóa file ảnh nếu có
     if (product?.image_url) {
       deleteImage(product.image_url);
     }
@@ -343,12 +341,6 @@ const deleteProduct = async (req, res) => {
     });
   }
 };
-
-/**
- * QUẢN LÝ DANH MỤC
- */
-
-// Tạo danh mục mới
 const createCategory = async (req, res) => {
   try {
     const category = await CategoryModel.create(req.body);
@@ -366,8 +358,6 @@ const createCategory = async (req, res) => {
     });
   }
 };
-
-// Cập nhật danh mục
 const updateCategory = async (req, res) => {
   try {
     const categoryId = parseInt(req.params.id);
@@ -394,8 +384,6 @@ const updateCategory = async (req, res) => {
     });
   }
 };
-
-// Xóa danh mục
 const deleteCategory = async (req, res) => {
   try {
     const categoryId = parseInt(req.params.id);
@@ -414,12 +402,6 @@ const deleteCategory = async (req, res) => {
     });
   }
 };
-
-/**
- * QUẢN LÝ ĐỚN HÀNG
- */
-
-// Lấy tất cả đơn hàng
 const getAllOrders = async (req, res) => {
   try {
     const orders = await OrderModel.getAll();
@@ -437,8 +419,6 @@ const getAllOrders = async (req, res) => {
     });
   }
 };
-
-// Cập nhật trạng thái đơn hàng
 const updateOrderStatus = async (req, res) => {
   try {
     const orderId = parseInt(req.params.id);
@@ -489,8 +469,6 @@ const updateOrderStatus = async (req, res) => {
 
     const newStatus = normalizeOrderStatus(status || order.Status);
     let emailSent = false;
-
-    // Chỉ gửi email khi đơn được xác nhận lần đầu
     if (previousStatus !== 'confirmed' && newStatus === 'confirmed') {
       try {
         const approvedOrder = await OrderModel.findById(orderId);
@@ -529,8 +507,6 @@ const updateOrderStatus = async (req, res) => {
     });
   }
 };
-
-// Cập nhật trạng thái vận chuyển / mã vận đơn (admin hoặc callback giả lập từ đơn vị vận chuyển)
 const updateShippingProgress = async (req, res) => {
   try {
     const orderId = parseInt(req.params.id, 10);
@@ -607,8 +583,6 @@ const updateShippingProgress = async (req, res) => {
     });
   }
 };
-
-// Duyệt / từ chối yêu cầu hoàn trả sau khi shop kiểm tra hàng nhận về
 const processReturnRequest = async (req, res) => {
   try {
     const orderId = parseInt(req.params.id, 10);
@@ -674,8 +648,6 @@ const processReturnRequest = async (req, res) => {
     });
   }
 };
-
-// Gửi email khuyến mãi hàng loạt
 const sendPromotionCampaign = async (req, res) => {
   try {
     const {
@@ -728,12 +700,6 @@ const sendPromotionCampaign = async (req, res) => {
     });
   }
 };
-
-/**
- * QUẢN LÝ NGƯỜI DÙNG
- */
-
-// Lấy tất cả người dùng
 const getAllUsers = async (req, res) => {
   try {
     const users = await UserModel.getAll();
@@ -751,8 +717,6 @@ const getAllUsers = async (req, res) => {
     });
   }
 };
-
-// Khóa/Mở khóa người dùng
 const toggleUserLock = async (req, res) => {
   try {
     const userId = parseInt(req.params.id);
@@ -778,38 +742,219 @@ const toggleUserLock = async (req, res) => {
   }
 };
 
-/**
- * THỐNG KÊ
- */
 
-// Lấy thống kê tổng quan
+const getAiBusinessInsights = async (req, res) => {
+  try {
+    const pool = getPool();
+    await ProductModel.ensureSaleColumns(pool);
+
+    const lookbackDays = Math.min(365, Math.max(30, parseInt(req.query.lookbackDays || '90', 10)));
+
+    let productStatsResult;
+    try {
+      productStatsResult = await pool.request()
+        .input('lookbackDays', sql.Int, lookbackDays)
+        .query(`
+          SELECT
+            p.ProductId,
+            p.ProductName,
+            p.Price,
+            p.SalePrice,
+            p.Stock,
+            p.CreatedAt,
+            c.CategoryName,
+            (SELECT TOP 1 ImageURL FROM ProductImages WHERE ProductID = p.ProductID) AS ImageUrl,
+            SUM(CASE
+                  WHEN o.Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Đang giao', N'Hoàn thành', N'pending', N'confirmed', N'shipping', N'completed')
+                    AND o.OrderDate >= DATEADD(DAY, -30, GETDATE())
+                  THEN od.Quantity ELSE 0 END
+            ) AS Sold30,
+            SUM(CASE
+                  WHEN o.Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Đang giao', N'Hoàn thành', N'pending', N'confirmed', N'shipping', N'completed')
+                    AND o.OrderDate >= DATEADD(DAY, -90, GETDATE())
+                  THEN od.Quantity ELSE 0 END
+            ) AS Sold90,
+            SUM(CASE
+                  WHEN o.Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Đang giao', N'Hoàn thành', N'pending', N'confirmed', N'shipping', N'completed')
+                    AND o.OrderDate >= DATEADD(DAY, -@lookbackDays, GETDATE())
+                  THEN od.Quantity ELSE 0 END
+            ) AS SoldLookback,
+            MAX(CASE
+                  WHEN o.Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Đang giao', N'Hoàn thành', N'pending', N'confirmed', N'shipping', N'completed')
+                  THEN o.OrderDate ELSE NULL END
+            ) AS LastSoldAt
+          FROM Products p
+          LEFT JOIN Categories c ON p.CategoryId = c.CategoryId
+          LEFT JOIN OrderItems od ON p.ProductId = od.ProductId
+          LEFT JOIN Orders o ON od.OrderId = o.OrderId
+          GROUP BY p.ProductId, p.ProductName, p.Price, p.SalePrice, p.Stock, p.CreatedAt, c.CategoryName
+        `);
+    } catch (imageQueryError) {
+      console.warn('AI insights image query fallback:', imageQueryError.message);
+      productStatsResult = await pool.request()
+        .input('lookbackDays', sql.Int, lookbackDays)
+        .query(`
+          SELECT
+            p.ProductId,
+            p.ProductName,
+            p.Price,
+            p.SalePrice,
+            p.Stock,
+            p.CreatedAt,
+            c.CategoryName,
+            NULL AS ImageUrl,
+            SUM(CASE
+                  WHEN o.Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Đang giao', N'Hoàn thành', N'pending', N'confirmed', N'shipping', N'completed')
+                    AND o.OrderDate >= DATEADD(DAY, -30, GETDATE())
+                  THEN od.Quantity ELSE 0 END
+            ) AS Sold30,
+            SUM(CASE
+                  WHEN o.Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Đang giao', N'Hoàn thành', N'pending', N'confirmed', N'shipping', N'completed')
+                    AND o.OrderDate >= DATEADD(DAY, -90, GETDATE())
+                  THEN od.Quantity ELSE 0 END
+            ) AS Sold90,
+            SUM(CASE
+                  WHEN o.Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Đang giao', N'Hoàn thành', N'pending', N'confirmed', N'shipping', N'completed')
+                    AND o.OrderDate >= DATEADD(DAY, -@lookbackDays, GETDATE())
+                  THEN od.Quantity ELSE 0 END
+            ) AS SoldLookback,
+            MAX(CASE
+                  WHEN o.Status IN (N'Chờ xác nhận', N'Đã xác nhận', N'Đang giao', N'Hoàn thành', N'pending', N'confirmed', N'shipping', N'completed')
+                  THEN o.OrderDate ELSE NULL END
+            ) AS LastSoldAt
+          FROM Products p
+          LEFT JOIN Categories c ON p.CategoryId = c.CategoryId
+          LEFT JOIN OrderItems od ON p.ProductId = od.ProductId
+          LEFT JOIN Orders o ON od.OrderId = o.OrderId
+          GROUP BY p.ProductId, p.ProductName, p.Price, p.SalePrice, p.Stock, p.CreatedAt, c.CategoryName
+        `);
+    }
+
+    const rows = productStatsResult.recordset || [];
+    const analyzedRows = rows.map((row) => {
+      const basePrice = toSafeNumber(row.Price);
+      const salePrice = toSafeNumber(row.SalePrice);
+      const effectivePrice = salePrice > 0 && salePrice < basePrice ? salePrice : basePrice;
+      const sold30 = toSafeNumber(row.Sold30);
+      const sold90 = toSafeNumber(row.Sold90);
+      const soldLookback = toSafeNumber(row.SoldLookback);
+      const stock = Math.max(0, toSafeNumber(row.Stock));
+      const costRate = estimateCostRateByCategory(row.CategoryName);
+      const estimatedCostPerUnit = effectivePrice * costRate;
+      const estimatedProfitPerUnit = Math.max(0, effectivePrice - estimatedCostPerUnit);
+      const estimatedProfit30 = sold30 * estimatedProfitPerUnit;
+      const estimatedRevenue30 = sold30 * effectivePrice;
+
+      const coverageDays = sold30 > 0 ? Math.round((stock / sold30) * 30) : null;
+      const discountSuggestion = computeRecommendedDiscount(sold30, sold90, stock, row.LastSoldAt);
+
+      return {
+        productId: row.ProductId,
+        productName: row.ProductName,
+        categoryName: row.CategoryName || 'Chua phan loai',
+        imageUrl: row.ImageUrl || null,
+        price: effectivePrice,
+        stock,
+        sold30,
+        sold90,
+        soldLookback,
+        estimatedProfitPerUnit,
+        estimatedProfit30,
+        estimatedRevenue30,
+        coverageDays,
+        lastSoldAt: row.LastSoldAt || null,
+        discountSuggestion
+      };
+    });
+
+    const shouldPromote = analyzedRows
+      .filter((item) => item.sold30 >= 3 && item.estimatedProfitPerUnit > 0)
+      .sort((a, b) => {
+        const scoreA = a.estimatedProfit30 + (a.sold30 * 10000);
+        const scoreB = b.estimatedProfit30 + (b.sold30 * 10000);
+        return scoreB - scoreA;
+      })
+      .slice(0, 8)
+      .map((item) => ({
+        ...item,
+        recommendation: item.coverageDays !== null && item.coverageDays < 20
+          ? 'Ban dang ban tot va sap can hang, nen tang ton kho + day manh quang cao.'
+          : 'Ban dang tao bien loi nhuan tot, nen uu tien truyen thong va cross-sell.'
+      }));
+
+    const shouldDiscount = analyzedRows
+      .filter((item) => item.stock > 0 && (item.sold30 <= 1 || item.discountSuggestion >= 10))
+      .sort((a, b) => {
+        const urgencyA = (a.stock * 3) + (a.discountSuggestion * 10) - (a.sold30 * 5);
+        const urgencyB = (b.stock * 3) + (b.discountSuggestion * 10) - (b.sold30 * 5);
+        return urgencyB - urgencyA;
+      })
+      .slice(0, 8)
+      .map((item) => ({
+        ...item,
+        recommendation: item.discountSuggestion > 0
+          ? `De xuat giam ${item.discountSuggestion}% trong 7-14 ngay de xoa ton.`
+          : 'Nen gom combo hoac tang uu dai freeship de kich cau nhe.'
+      }));
+
+    const totalRevenue30 = analyzedRows.reduce((sum, item) => sum + item.estimatedRevenue30, 0);
+    const totalProfit30 = analyzedRows.reduce((sum, item) => sum + item.estimatedProfit30, 0);
+    const slowMovingStockValue = shouldDiscount.reduce((sum, item) => sum + (item.price * item.stock), 0);
+
+    const summary = {
+      lookbackDays,
+      productAnalyzed: analyzedRows.length,
+      estimatedRevenue30: Math.round(totalRevenue30),
+      estimatedProfit30: Math.round(totalProfit30),
+      estimatedProfitMargin30: totalRevenue30 > 0 ? Number(((totalProfit30 / totalRevenue30) * 100).toFixed(2)) : 0,
+      slowMovingStockValue: Math.round(slowMovingStockValue)
+    };
+
+    const actions = [
+      shouldPromote.length
+        ? `Tap trung ngan sach quang cao cho ${Math.min(3, shouldPromote.length)} san pham dau nhom loi nhuan cao.`
+        : 'Chua co san pham ban chay ro rang, nen chay campaign test theo danh muc.',
+      shouldDiscount.length
+        ? `Lap chuong trinh xa ton cho ${Math.min(5, shouldDiscount.length)} san pham ban cham voi muc giam de xuat.`
+        : 'Ton kho hien tai khong co nhom ban cham dang ke.',
+      'Theo doi lai sau 7 ngay de danh gia hieu qua va dieu chinh muc giam gia.'
+    ];
+
+    return res.json({
+      success: true,
+      data: {
+        generatedAt: new Date().toISOString(),
+        summary,
+        shouldPromote,
+        shouldDiscount,
+        actions
+      }
+    });
+  } catch (error) {
+    console.error('Get AI business insights error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Loi khi phan tich AI cho admin: ' + error.message
+    });
+  }
+};
 const getStatistics = async (req, res) => {
   try {
     const pool = getPool();
     const requestedRevenueView = String(req.query.revenueView || 'day').trim().toLowerCase();
     const revenueView = ['day', 'month', 'quarter'].includes(requestedRevenueView) ? requestedRevenueView : 'day';
-    
-    // Đếm tổng số người dùng
     const userCountResult = await pool.request()
       .query('SELECT COUNT(*) AS Count FROM Users');
     const userCount = userCountResult.recordset[0].Count;
-    
-    // Đếm tổng số sản phẩm
     const productCountResult = await pool.request()
       .query('SELECT COUNT(*) AS Count FROM Products');
     const productCount = productCountResult.recordset[0].Count;
-    
-    // Đếm tổng số đơn hàng
     const orderCountResult = await pool.request()
       .query('SELECT COUNT(*) AS Count FROM Orders');
     const orderCount = orderCountResult.recordset[0].Count;
-    
-    // Tổng doanh thu
     const revenueResult = await pool.request()
       .query("SELECT SUM(TotalAmount) AS Revenue FROM Orders WHERE Status != N'Đã hủy'");
     const revenue = revenueResult.recordset[0].Revenue || 0;
-    
-    // Đơn hàng theo trạng thái
     let ordersByStatus = [];
     try {
       const ordersByStatusResult = await pool.request()
@@ -818,9 +963,6 @@ const getStatistics = async (req, res) => {
     } catch (error) {
       console.warn('Statistics ordersByStatus query warning:', error.message);
     }
-    
-    // Top 5 sản phẩm bán chạy
-    // Tránh phụ thuộc vào ProductImages/OrderItems.Price để không lỗi khi schema lệch.
     let topProducts = [];
     try {
       const topProductsResult = await pool.request()
@@ -840,8 +982,6 @@ const getStatistics = async (req, res) => {
     } catch (error) {
       console.warn('Statistics topProducts query warning:', error.message);
     }
-    
-    // Doanh thu theo kỳ (ngày/tháng/quý)
     let revenueSeries = [];
     try {
       let revenueQuery = '';
@@ -909,7 +1049,6 @@ const getStatistics = async (req, res) => {
         topProducts,
         revenueView,
         revenueSeries,
-        // backward-compatible key cho frontend cũ
         last7Days: revenueSeries
       }
     });
@@ -923,28 +1062,20 @@ const getStatistics = async (req, res) => {
 };
 
 module.exports = {
-  // Sản phẩm
   uploadProductImage,
   createProduct,
   updateProduct,
   deleteProduct,
-  
-  // Danh mục
   createCategory,
   updateCategory,
   deleteCategory,
-  
-  // Đơn hàng
   getAllOrders,
   updateOrderStatus,
   updateShippingProgress,
   processReturnRequest,
   sendPromotionCampaign,
-  
-  // Người dùng
   getAllUsers,
   toggleUserLock,
-  
-  // Thống kê
-  getStatistics
+  getStatistics,
+  getAiBusinessInsights
 };

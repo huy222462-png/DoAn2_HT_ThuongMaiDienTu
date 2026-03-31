@@ -305,6 +305,46 @@ section {
   overflow: hidden;
 }
 
+.ai-build-advisor .card {
+  border: 1px solid rgba(15, 118, 110, 0.2);
+  background:
+    radial-gradient(600px 180px at 100% 0%, rgba(255, 122, 24, 0.12), transparent 65%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(245, 249, 255, 0.95));
+}
+
+.ai-build-summary {
+  border: 1px solid rgba(15, 118, 110, 0.18);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.ai-build-item {
+  border: 1px solid rgba(15, 118, 110, 0.16);
+  border-radius: 14px;
+  padding: 12px;
+  background: #ffffff;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.ai-build-item:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.ai-build-item-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ai-build-tips {
+  border-top: 1px dashed rgba(15, 118, 110, 0.28);
+  padding-top: 8px;
+}
+
 .product-image-wrapper {
   width: 100%;
   height: 250px;
